@@ -179,6 +179,22 @@ def log_correction(
     return {"correction_id": str(correction.id)}
 
 
+@router.post("/api/videos/{video_id}/phase1/enqueue")
+def enqueue_phase1(video_id: uuid.UUID, db: Session = Depends(get_db)):
+    video = _get_video_or_404(video_id, db)
+
+    if video.status != JobStatus.reviewed:
+        raise HTTPException(
+            status_code=409,
+            detail=_error("Video must be in 'reviewed' status to enqueue Phase 1", "INVALID_STATUS"),
+        )
+
+    video.status = JobStatus.phase1_queued
+    db.commit()
+
+    return {"video_id": str(video_id), "status": "phase1_queued"}
+
+
 @router.post("/api/videos/{video_id}/phase1/confirm-review")
 def confirm_phase1_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
     video = _get_video_or_404(video_id, db)

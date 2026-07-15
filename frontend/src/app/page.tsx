@@ -6,7 +6,10 @@ import UploadForm from "@/components/UploadForm";
 import VideoList from "@/components/VideoList";
 
 const POLLING_INTERVAL_MS = 4000;
-const IN_PROGRESS_STATUSES = new Set(["uploaded", "queued", "transcribing"]);
+const IN_PROGRESS_STATUSES = new Set([
+  "uploaded", "queued", "transcribing",
+  "phase1_queued", "phase1_processing",
+]);
 
 export default function HomePage() {
   const [videos, setVideos] = useState<VideoSummary[]>([]);
@@ -57,7 +60,7 @@ export default function HomePage() {
       <h2 className="text-lg font-semibold mb-4">Upload a file</h2>
       <UploadForm onUploaded={handleUploaded} />
       <h2 className="text-lg font-semibold mt-8 mb-2">Recent uploads</h2>
-      <VideoList videos={videos} />
+      <VideoList videos={videos} onRefreshVideo={async (id) => { await refreshVideo(id); startPolling(id); }} />
     </div>
   );
 }

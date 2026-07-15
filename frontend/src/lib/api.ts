@@ -146,6 +146,12 @@ export async function logCorrection(
   return res.json();
 }
 
+export async function enqueuePhase1(id: string): Promise<{ video_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/enqueue`, { method: "POST" });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
 export async function confirmPhase1Review(id: string): Promise<{ video_id: string; status: string }> {
   const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/confirm-review`, {
     method: "POST",

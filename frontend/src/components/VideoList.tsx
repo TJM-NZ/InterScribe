@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import type { VideoStatus, VideoSummary } from "@/lib/api";
+import { enqueuePhase1, type VideoStatus, type VideoSummary } from "@/lib/api";
 
 const STATUS_LABELS: Record<VideoStatus, string> = {
   uploaded: "Uploaded",
@@ -29,9 +30,35 @@ const STATUS_COLORS: Record<VideoStatus, string> = {
   failed: "bg-red-100 text-red-700",
 };
 
-function reviewLink(v: VideoSummary) {
+interface Props {
+  videos: VideoSummary[];
+  onRefreshVideo: (id: string) => Promise<void>;
+}
+
+function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: (id: string) => Promise<void> }) {
+  const [loading, setLoading] = useState(false);
+
   if (v.status === "ready_for_review") {
     return <Link href={`/videos/${v.id}`} className="text-xs text-blue-600 hover:underline">Review transcript →</Link>;
+  }
+  if (v.status === "reviewed") {
+    return (
+      <button
+        onClick={async () => {
+          setLoading(true);
+          try {
+            await enqueuePhase1(v.id);
+            await onRefreshVideo(v.id);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        disabled={loading}
+        className="text-xs text-emerald-600 hover:underline disabled:opacity-50"
+      >
+        {loading ? "Queuing…" : "Start analysis →"}
+      </button>
+    );
   }
   if (v.status === "phase1_ready_for_review") {
     return <Link href={`/videos/${v.id}/phase1`} className="text-xs text-purple-600 hover:underline">Review narrative →</Link>;
@@ -39,11 +66,7 @@ function reviewLink(v: VideoSummary) {
   return null;
 }
 
-interface Props {
-  videos: VideoSummary[];
-}
-
-export default function VideoList({ videos }: Props) {
+export default function VideoList({ videos, onRefreshVideo }: Props) {
   if (videos.length === 0) {
     return <p className="text-gray-400 text-sm mt-6">No files uploaded yet.</p>;
   }
@@ -62,7 +85,7 @@ export default function VideoList({ videos }: Props) {
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[v.status]}`}>
               {STATUS_LABELS[v.status]}
             </span>
-            {reviewLink(v)}
+            <VideoActions v={v} onRefreshVideo={onRefreshVideo} />
           </div>
         </li>
       ))}
