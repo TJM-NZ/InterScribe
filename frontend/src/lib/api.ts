@@ -30,6 +30,13 @@ export interface SpeakerRoleEntry {
 
 export type SpeakerRole = "interviewer" | "interviewee" | "unknown";
 
+export async function listVideos(): Promise<VideoSummary[]> {
+  const res = await fetch(`${API_BASE}/api/videos`);
+  if (!res.ok) throw await res.json();
+  const data = await res.json();
+  return data.videos;
+}
+
 export async function uploadVideo(file: File): Promise<{ id: string; status: string; original_filename: string; media_type: string }> {
   const form = new FormData();
   form.append("file", file);

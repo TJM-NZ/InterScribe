@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getVideo, type VideoSummary } from "@/lib/api";
+import { getVideo, listVideos, type VideoSummary } from "@/lib/api";
 import UploadForm from "@/components/UploadForm";
 import VideoList from "@/components/VideoList";
 
@@ -46,6 +46,7 @@ export default function HomePage() {
   );
 
   useEffect(() => {
+    listVideos().then(setVideos).catch(() => {});
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
     };

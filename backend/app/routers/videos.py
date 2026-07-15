@@ -31,6 +31,29 @@ def health():
     return {"status": "ok"}
 
 
+@router.get("/api/videos")
+def list_videos(db: Session = Depends(get_db)):
+    videos = (
+        db.execute(select(Video).order_by(Video.uploaded_at.desc()))
+        .scalars()
+        .all()
+    )
+    return {
+        "videos": [
+            {
+                "id": str(v.id),
+                "status": v.status,
+                "error_reason": v.error_reason,
+                "duration_seconds": v.duration_seconds,
+                "original_filename": v.original_filename,
+                "media_type": v.media_type,
+                "uploaded_at": v.uploaded_at.isoformat(),
+            }
+            for v in videos
+        ]
+    }
+
+
 @router.post("/api/videos", status_code=201)
 def upload_video(file: UploadFile, db: Session = Depends(get_db)):
     try:

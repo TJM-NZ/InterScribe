@@ -34,6 +34,7 @@ def run_worker():
 
             logger.info("Processing video %s (%s)", video.id, video.original_filename)
             video.status = JobStatus.transcribing
+            video.error_reason = None
             db.commit()
 
             try:
