@@ -45,6 +45,10 @@ class JobStatus(str, PyEnum):
     transcribing = "transcribing"
     ready_for_review = "ready_for_review"
     reviewed = "reviewed"
+    phase1_queued = "phase1_queued"
+    phase1_processing = "phase1_processing"
+    phase1_ready_for_review = "phase1_ready_for_review"
+    phase1_reviewed = "phase1_reviewed"
     failed = "failed"
 
 

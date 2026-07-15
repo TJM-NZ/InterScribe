@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -27,6 +27,24 @@ services:
       postgres:
         condition: service_healthy
 
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
   worker:
     build: ./backend
     command: python -m app.worker.runner
@@ -37,6 +55,8 @@ services:
       - hf_cache:${HF_HOME}
     depends_on:
       postgres:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     deploy:
       resources:
@@ -61,3 +81,4 @@ volumes:
   upload_storage:
   whisper_models:
   hf_cache:
+  ollama_models:

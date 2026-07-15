@@ -13,6 +13,7 @@ config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
 from app.database import Base
 import app.models.video  # noqa: F401 — register all models
+import app.models.phase1  # noqa: F401
 
 target_metadata = Base.metadata
 

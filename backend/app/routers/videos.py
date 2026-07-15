@@ -109,7 +109,11 @@ def get_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
     if not video:
         raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
 
-    reviewable = {JobStatus.ready_for_review, JobStatus.reviewed}
+    reviewable = {
+        JobStatus.ready_for_review, JobStatus.reviewed,
+        JobStatus.phase1_queued, JobStatus.phase1_processing,
+        JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
+    }
     if video.status not in reviewable:
         raise HTTPException(
             status_code=409,
@@ -264,4 +268,8 @@ def confirm_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
     video.status = JobStatus.reviewed
     db.commit()
 
-    return {"video_id": str(video_id), "status": video.status}
+    # D3 (SPEC-002): auto-enqueue Phase 1 immediately after spec-1 confirm
+    video.status = JobStatus.phase1_queued
+    db.commit()
+
+    return {"video_id": str(video_id), "status": "reviewed"}

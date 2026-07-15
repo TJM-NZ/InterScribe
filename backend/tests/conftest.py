@@ -24,6 +24,12 @@ os.environ.setdefault("HUGGINGFACE_TOKEN", "test-token")
 os.environ.setdefault("HF_HOME", tempfile.mkdtemp())
 os.environ.setdefault("MAX_UPLOAD_SIZE_BYTES", str(2 * 1024 * 1024 * 1024))
 os.environ.setdefault("MAX_UPLOAD_DURATION_SECONDS", "10800")
+os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")
+os.environ.setdefault("QWEN_MODEL", "qwen3.5:9b")
+os.environ.setdefault("NARRATIVE_CLUSTER_THRESHOLD", "0.3")
+os.environ.setdefault("NARRATIVE_TOP_N", "5")
+os.environ.setdefault("NARRATIVE_CHUNK_MAX_TOKENS", "10000")
+os.environ.setdefault("NARRATIVE_CHUNK_RETRIES", "3")
 
 # Create test database (drop + recreate for a clean slate each run)
 _admin_url = _base_url.rsplit("/", 1)[0] + "/postgres"
@@ -36,6 +42,8 @@ _admin_engine.dispose()
 # Safe to import app now — settings picks up TEST_DATABASE_URL
 from app.config import settings  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
+import app.models.video  # noqa: F401, E402
+import app.models.phase1  # noqa: F401, E402
 from app.main import app  # noqa: E402
 
 engine = create_engine(TEST_DATABASE_URL)
@@ -44,6 +52,9 @@ TestingSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=Fals
 
 @pytest.fixture(autouse=True)
 def reset_db():
+    with engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
@@ -94,3 +105,41 @@ def make_fake_audio(size: int = 1024) -> bytes:
         b"data", data_size,
     )
     return header + b"\x00" * data_size
+
+
+def seed_video_with_segments(db, speakers=None, status=None):
+    """Helper: create a reviewed video with segments and speaker role maps."""
+    from datetime import datetime, timezone
+    from app.models.video import JobStatus, MediaType, SpeakerRoleMap, TranscriptSegment, Video
+
+    _status = status or JobStatus.reviewed
+    video = Video(
+        original_filename="interview.wav",
+        storage_path="/fake/path/interview.wav",
+        media_type=MediaType.audio,
+        status=_status,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    db.add(video)
+    db.flush()
+
+    _speakers = speakers or ["SPEAKER_00", "SPEAKER_01"]
+    for idx, label in enumerate(_speakers):
+        db.add(TranscriptSegment(
+            video_id=video.id,
+            segment_id=idx,
+            start_ts=float(idx),
+            end_ts=float(idx + 1),
+            text=f"Utterance {idx} from {label}",
+            speaker_label=label,
+            confidence=0.9,
+        ))
+        db.add(SpeakerRoleMap(
+            video_id=video.id,
+            speaker_label=label,
+            role="interviewer" if idx == 0 else "interviewee",
+        ))
+
+    db.commit()
+    db.refresh(video)
+    return video

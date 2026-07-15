@@ -19,5 +19,17 @@ class Settings(BaseSettings):
     max_upload_size_bytes: int = 2_147_483_648
     max_upload_duration_seconds: float = 10_800.0
 
+    ollama_base_url: str = "http://ollama:11434"
+    qwen_model: str = "qwen3.5:9b"
+
+    # max tokens per chunk (D3 from Spec 2: fixed at 10,000)
+    narrative_chunk_max_tokens: int = 10_000
+    # agglomerative clustering cosine distance threshold
+    narrative_cluster_threshold: float = 0.3
+    # top-N clusters surfaced to phase 2 (configurable, default 5)
+    narrative_top_n: int = 5
+    # per-chunk Qwen retry attempts before failing the whole video
+    narrative_chunk_retries: int = 3
+
 
 settings = Settings()

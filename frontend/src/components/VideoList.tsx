@@ -1,25 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import type { VideoSummary } from "@/lib/api";
+import type { VideoStatus, VideoSummary } from "@/lib/api";
 
-const STATUS_LABELS: Record<VideoSummary["status"], string> = {
+const STATUS_LABELS: Record<VideoStatus, string> = {
   uploaded: "Uploaded",
   queued: "Queued",
   transcribing: "Transcribing…",
   ready_for_review: "Ready for review",
   reviewed: "Reviewed",
+  phase1_queued: "Analysis queued",
+  phase1_processing: "Analysing…",
+  phase1_ready_for_review: "Ready for Phase 1 review",
+  phase1_reviewed: "Phase 1 complete",
   failed: "Failed",
 };
 
-const STATUS_COLORS: Record<VideoSummary["status"], string> = {
+const STATUS_COLORS: Record<VideoStatus, string> = {
   uploaded: "bg-gray-100 text-gray-600",
   queued: "bg-yellow-100 text-yellow-700",
   transcribing: "bg-blue-100 text-blue-700",
   ready_for_review: "bg-green-100 text-green-700",
   reviewed: "bg-emerald-100 text-emerald-700",
+  phase1_queued: "bg-yellow-100 text-yellow-700",
+  phase1_processing: "bg-blue-100 text-blue-700",
+  phase1_ready_for_review: "bg-purple-100 text-purple-700",
+  phase1_reviewed: "bg-emerald-100 text-emerald-700",
   failed: "bg-red-100 text-red-700",
 };
+
+function reviewLink(v: VideoSummary) {
+  if (v.status === "ready_for_review") {
+    return <Link href={`/videos/${v.id}`} className="text-xs text-blue-600 hover:underline">Review transcript →</Link>;
+  }
+  if (v.status === "phase1_ready_for_review") {
+    return <Link href={`/videos/${v.id}/phase1`} className="text-xs text-purple-600 hover:underline">Review narrative →</Link>;
+  }
+  return null;
+}
 
 interface Props {
   videos: VideoSummary[];
@@ -44,14 +62,7 @@ export default function VideoList({ videos }: Props) {
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[v.status]}`}>
               {STATUS_LABELS[v.status]}
             </span>
-            {(v.status === "ready_for_review" || v.status === "reviewed") && (
-              <Link
-                href={`/videos/${v.id}`}
-                className="text-xs text-blue-600 hover:underline"
-              >
-                Review →
-              </Link>
-            )}
+            {reviewLink(v)}
           </div>
         </li>
       ))}

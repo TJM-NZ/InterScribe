@@ -1,8 +1,20 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+export type VideoStatus =
+  | "uploaded"
+  | "queued"
+  | "transcribing"
+  | "ready_for_review"
+  | "reviewed"
+  | "phase1_queued"
+  | "phase1_processing"
+  | "phase1_ready_for_review"
+  | "phase1_reviewed"
+  | "failed";
+
 export interface VideoSummary {
   id: string;
-  status: "uploaded" | "queued" | "transcribing" | "ready_for_review" | "reviewed" | "failed";
+  status: VideoStatus;
   original_filename: string;
   media_type: "video" | "audio";
   duration_seconds: number | null;
@@ -29,6 +41,37 @@ export interface SpeakerRoleEntry {
 }
 
 export type SpeakerRole = "interviewer" | "interviewee" | "unknown";
+
+export interface NarrativeCluster {
+  id: string;
+  video_id: string;
+  representative_label: string;
+  cluster_size: number;
+  rank: number;
+}
+
+export interface NotableMoment {
+  id: string;
+  video_id: string;
+  chunk_id: string;
+  start_segment_id: number;
+  end_segment_id: number;
+  description: string;
+  reviewed: boolean;
+}
+
+export type CorrectionEntityType = "narrative_cluster" | "notable_moment";
+
+export type ReasonCategory =
+  | "model_error"
+  | "ambiguous_input"
+  | "edge_case"
+  | "preference";
+
+export interface Phase1Narrative {
+  clusters: NarrativeCluster[];
+  notable_moments: NotableMoment[];
+}
 
 export async function listVideos(): Promise<VideoSummary[]> {
   const res = await fetch(`${API_BASE}/api/videos`);
@@ -72,6 +115,41 @@ export async function assignSpeakers(
 
 export async function confirmReview(id: string): Promise<{ video_id: string; status: string }> {
   const res = await fetch(`${API_BASE}/api/videos/${id}/confirm-review`, { method: "POST" });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function getPhase1Narrative(id: string): Promise<Phase1Narrative> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/narrative`);
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function logCorrection(
+  videoId: string,
+  payload: {
+    entity_type: CorrectionEntityType;
+    entity_id: string;
+    field_name: string | null;
+    original_value: Record<string, unknown> | null;
+    corrected_value: Record<string, unknown> | null;
+    reason_category: ReasonCategory;
+    reason_note: string | null;
+  }
+): Promise<{ correction_id: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${videoId}/phase1/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function confirmPhase1Review(id: string): Promise<{ video_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/confirm-review`, {
+    method: "POST",
+  });
   if (!res.ok) throw await res.json();
   return res.json();
 }
