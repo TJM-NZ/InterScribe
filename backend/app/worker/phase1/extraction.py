@@ -23,6 +23,7 @@ _SYSTEM_PROMPT = (
 )
 
 _USER_TEMPLATE = """\
+/no_think
 Return a JSON object with exactly these keys:
 - "domain": string (1-4 word domain label, e.g. "AI research", "healthcare policy")
 - "tone": one of: formal, casual, technical, analytical, emotional, neutral
@@ -56,6 +57,17 @@ def _pull_model_if_needed() -> None:
         logger.warning("Could not verify/pull Ollama model: %s", exc)
 
 
+def _extract_json(text: str) -> dict:
+    """Extract JSON from response text, stripping markdown fences or think tags if present."""
+    import re
+    # Strip <think>...</think> blocks
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Strip markdown code fences
+    text = re.sub(r"^```(?:json)?\s*", "", text).strip()
+    text = re.sub(r"\s*```$", "", text).strip()
+    return json.loads(text)
+
+
 def _call_qwen(chunk_text: str) -> dict:
     payload = {
         "model": settings.qwen_model,
@@ -64,16 +76,16 @@ def _call_qwen(chunk_text: str) -> dict:
             {"role": "user", "content": _USER_TEMPLATE.format(chunk_text=chunk_text)},
         ],
         "stream": False,
-        "format": "json",
+        "options": {"num_ctx": 16384},
     }
     resp = httpx.post(
         f"{settings.ollama_base_url}/api/chat",
         json=payload,
-        timeout=300,
+        timeout=600,
     )
     resp.raise_for_status()
     content = resp.json()["message"]["content"]
-    return json.loads(content)
+    return _extract_json(content)
 
 
 def _validate_notable_moments(
