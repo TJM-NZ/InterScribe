@@ -3,10 +3,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.phase1 import NarrativeCluster, TranscriptChunk, TranscriptTurn
+from app.models.phase2 import Phase2Chunk, Quote
 from app.models.video import JobStatus, SpeakerRole, SpeakerRoleMap, TranscriptSegment, Video
 from app.services.storage import (
     DurationExceededError,
@@ -113,6 +115,8 @@ def get_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
         JobStatus.ready_for_review, JobStatus.reviewed,
         JobStatus.phase1_queued, JobStatus.phase1_processing,
         JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
+        JobStatus.phase2_queued, JobStatus.phase2_processing,
+        JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
     }
     if video.status not in reviewable:
         raise HTTPException(
@@ -273,3 +277,53 @@ def confirm_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
     db.commit()
 
     return {"video_id": str(video_id), "status": "reviewed"}
+
+
+@router.post("/api/videos/{video_id}/retry")
+def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
+    video = db.get(Video, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
+
+    if video.status != JobStatus.failed:
+        raise HTTPException(
+            status_code=409,
+            detail=_error("Video is not in failed status", "NOT_FAILED"),
+        )
+
+    has_segments = (
+        db.execute(
+            select(TranscriptSegment.id).where(TranscriptSegment.video_id == video_id).limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
+    has_clusters = (
+        db.execute(
+            select(NarrativeCluster.id).where(NarrativeCluster.video_id == video_id).limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
+
+    if not has_segments:
+        # Transcription failed — no derived data to clean
+        video.status = JobStatus.queued
+    elif not has_clusters:
+        # Phase 1 failed — clean partial phase1 data (intermediate commits may have persisted rows)
+        # Delete TranscriptTurns (no FK cascade, direct delete)
+        db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video_id))
+        # Delete TranscriptChunks → DB cascades to ChunkNarrative, ChunkTheme, NotableMoment
+        db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video_id))
+        # NarrativeClusters should be absent, but clear defensively
+        db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video_id))
+        video.status = JobStatus.phase1_queued
+    else:
+        # Phase 2 failed — clean partial phase2 data
+        # Delete Phase2Chunks → DB cascades to QuoteCandidate
+        db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
+        db.execute(delete(Quote).where(Quote.video_id == video_id))
+        video.status = JobStatus.phase2_queued
+
+    video.error_reason = None
+    db.commit()
+
+    return {"video_id": str(video_id), "status": video.status.value}

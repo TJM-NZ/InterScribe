@@ -9,6 +9,7 @@ const POLLING_INTERVAL_MS = 4000;
 const IN_PROGRESS_STATUSES = new Set([
   "uploaded", "queued", "transcribing",
   "phase1_queued", "phase1_processing",
+  "phase2_queued", "phase2_processing",
 ]);
 
 export default function HomePage() {

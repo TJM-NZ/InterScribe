@@ -64,7 +64,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-lg font-semibold">{video.original_filename}</h2>
+        <h2 className="text-lg font-semibold break-all">{video.original_filename}</h2>
         <p className="text-sm text-gray-500 mt-0.5">
           {video.media_type} · {video.duration_seconds ? `${Math.round(video.duration_seconds / 60)} min` : "unknown duration"}
         </p>

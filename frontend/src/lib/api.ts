@@ -10,6 +10,10 @@ export type VideoStatus =
   | "phase1_processing"
   | "phase1_ready_for_review"
   | "phase1_reviewed"
+  | "phase2_queued"
+  | "phase2_processing"
+  | "phase2_ready_for_review"
+  | "phase2_reviewed"
   | "failed";
 
 export interface VideoSummary {
@@ -156,6 +160,12 @@ export async function confirmPhase1Review(id: string): Promise<{ video_id: strin
   const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/confirm-review`, {
     method: "POST",
   });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function retryVideo(id: string): Promise<{ video_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/retry`, { method: "POST" });
   if (!res.ok) throw await res.json();
   return res.json();
 }

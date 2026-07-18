@@ -11,6 +11,7 @@ import {
   type NotableMoment,
   type Phase1Narrative,
   type ReasonCategory,
+  type VideoStatus,
   type VideoSummary,
 } from "@/lib/api";
 import NarrativeClusterCard from "@/components/NarrativeClusterCard";
@@ -158,7 +159,11 @@ export default function Phase1ReviewPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  const isReviewed = video?.status === "phase1_reviewed";
+  const PAST_PHASE1 = new Set<VideoStatus>([
+    "phase1_reviewed", "phase2_queued", "phase2_processing",
+    "phase2_ready_for_review", "phase2_reviewed",
+  ]);
+  const isReviewed = video != null && PAST_PHASE1.has(video.status);
   const canConfirm = video?.status === "phase1_ready_for_review";
 
   if (loading) return <p className="text-gray-400">Loading…</p>;
@@ -168,7 +173,7 @@ export default function Phase1ReviewPage({ params }: { params: Promise<{ id: str
   return (
     <div className="space-y-10">
       <div>
-        <h2 className="text-lg font-semibold">{video.original_filename}</h2>
+        <h2 className="text-lg font-semibold break-all">{video.original_filename}</h2>
         <p className="text-sm text-gray-500 mt-0.5">Phase 1 narrative review</p>
       </div>
 
