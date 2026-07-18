@@ -88,6 +88,21 @@ from app.models.video import JobStatus, TranscriptSegment, Video
 logger = logging.getLogger(__name__)
 
 
+def detect_repetition_loop(text: str) -> bool:
+    tokens = text.split()
+    for n in (1, 2, 3):
+        for i in range(len(tokens) - n + 1):
+            ngram = tokens[i : i + n]
+            count = 1
+            j = i + n
+            while j <= len(tokens) - n and tokens[j : j + n] == ngram:
+                count += 1
+                j += n
+            if count >= 4:
+                return True
+    return False
+
+
 def _compute_confidence(segment: dict) -> float:
     words = segment.get("words") or []
     scores = [w["score"] for w in words if isinstance(w.get("score"), (int, float))]
@@ -122,13 +137,19 @@ def transcribe_video(video: Video, db: Session) -> None:
     result = model.transcribe(audio, batch_size=batch_size)
     language = result.get("language", "en")
 
-    align_model, metadata = whisperx.load_align_model(
-        language_code=language, device=device
-    )
-    result = whisperx.align(
-        result["segments"], align_model, metadata, audio, device,
-        return_char_alignments=False,
-    )
+    try:
+        align_model, metadata = whisperx.load_align_model(
+            language_code=language, device=device
+        )
+        result = whisperx.align(
+            result["segments"], align_model, metadata, audio, device,
+            return_char_alignments=False,
+        )
+    except Exception as exc:
+        logger.warning(
+            "No alignment model for language '%s', using raw transcription segments: %s",
+            language, exc,
+        )
 
     diarize_model = whisperx.DiarizationPipeline(
         use_auth_token=hf_token, device=device
@@ -141,6 +162,7 @@ def transcribe_video(video: Video, db: Session) -> None:
     for idx, seg in enumerate(segments_data):
         speaker_label = seg.get("speaker") or "SPEAKER_UNKNOWN"
         confidence = _compute_confidence(seg)
+        text = seg.get("text", "").strip()
 
         db.add(
             TranscriptSegment(
@@ -148,9 +170,10 @@ def transcribe_video(video: Video, db: Session) -> None:
                 segment_id=idx,
                 start_ts=float(seg["start"]),
                 end_ts=float(seg["end"]),
-                text=seg.get("text", "").strip(),
+                text=text,
                 speaker_label=speaker_label,
                 confidence=confidence,
+                repetition_flagged=detect_repetition_loop(text),
             )
         )
 

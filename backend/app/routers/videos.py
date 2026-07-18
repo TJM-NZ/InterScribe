@@ -144,6 +144,7 @@ def get_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
                 "text": s.text,
                 "speaker_label": s.speaker_label,
                 "confidence": s.confidence,
+                "repetition_flagged": s.repetition_flagged,
             }
             for s in segments
         ]
@@ -323,7 +324,8 @@ def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
         db.execute(delete(Quote).where(Quote.video_id == video_id))
         video.status = JobStatus.phase2_queued
 
+    new_status = video.status
     video.error_reason = None
     db.commit()
 
-    return {"video_id": str(video_id), "status": video.status.value}
+    return {"video_id": str(video_id), "status": new_status.value}

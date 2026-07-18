@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
-from sqlalchemy import Float, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +49,10 @@ class JobStatus(str, PyEnum):
     phase1_processing = "phase1_processing"
     phase1_ready_for_review = "phase1_ready_for_review"
     phase1_reviewed = "phase1_reviewed"
+    phase2_queued = "phase2_queued"
+    phase2_processing = "phase2_processing"
+    phase2_ready_for_review = "phase2_ready_for_review"
+    phase2_reviewed = "phase2_reviewed"
     failed = "failed"
 
 
@@ -98,6 +102,7 @@ class TranscriptSegment(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     speaker_label: Mapped[str] = mapped_column(String, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    repetition_flagged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     video: Mapped["Video"] = relationship(back_populates="segments")
 

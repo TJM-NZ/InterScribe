@@ -24,6 +24,7 @@ export default function TranscriptViewer({ segments, speakerRoles = {} }: Props)
     <div className="space-y-1" data-testid="transcript-viewer">
       {segments.map((seg) => {
         const isLowConfidence = seg.confidence < LOW_CONFIDENCE_THRESHOLD;
+        const isRepetition = seg.repetition_flagged;
         const roleName = speakerRoles[seg.speaker_label];
 
         return (
@@ -49,6 +50,14 @@ export default function TranscriptViewer({ segments, speakerRoles = {} }: Props)
                   data-testid="low-confidence-flag"
                 >
                   low confidence
+                </span>
+              )}
+              {isRepetition && (
+                <span
+                  className="text-xs text-red-600 font-medium"
+                  data-testid="repetition-flag"
+                >
+                  repetition detected
                 </span>
               )}
             </div>

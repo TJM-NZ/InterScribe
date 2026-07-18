@@ -35,6 +35,7 @@ export interface TranscriptSegment {
   text: string;
   speaker_label: string;
   confidence: number;
+  repetition_flagged: boolean;
 }
 
 export interface SpeakerRoleEntry {
