@@ -56,6 +56,23 @@ class JobStatus(str, PyEnum):
     failed = "failed"
 
 
+# Named status sets — state-machine semantics shared across routers
+TRANSCRIPT_VIEWABLE_STATUSES = frozenset({
+    JobStatus.ready_for_review, JobStatus.reviewed,
+    JobStatus.phase1_queued, JobStatus.phase1_processing,
+    JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
+    JobStatus.phase2_queued, JobStatus.phase2_processing,
+    JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
+})
+SPEAKER_REVIEW_STATUSES = frozenset({JobStatus.ready_for_review, JobStatus.reviewed})
+PHASE1_VIEWABLE_STATUSES = frozenset({
+    JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
+    JobStatus.phase2_queued, JobStatus.phase2_processing,
+    JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
+})
+PHASE2_VIEWABLE_STATUSES = frozenset({JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed})
+
+
 class SpeakerRole(str, PyEnum):
     interviewer = "interviewer"
     interviewee = "interviewee"

@@ -1,8 +1,6 @@
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,7 +13,8 @@ from app.models.phase1 import (
     ReasonCategory,
 )
 from app.models.phase2 import Quote
-from app.models.video import JobStatus, Video
+from app.models.video import JobStatus, PHASE2_VIEWABLE_STATUSES, Video
+from app.schemas import CorrectionRequest
 
 router = APIRouter()
 
@@ -23,8 +22,8 @@ router = APIRouter()
 @router.get("/api/videos/{video_id}/phase2/quotes")
 def get_phase2_quotes(
     video_id: uuid.UUID,
-    view: Optional[str] = Query(None),
-    limit: Optional[int] = Query(None),
+    view: str | None = Query(None),
+    limit: int | None = Query(None),
     db: Session = Depends(get_db),
 ):
     video = get_video_or_404(video_id, db)
@@ -35,8 +34,7 @@ def get_phase2_quotes(
             detail=api_error("view must be 'notable' or 'top'", "INVALID_VIEW"),
         )
 
-    reviewable = {JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed}
-    if video.status not in reviewable:
+    if video.status not in PHASE2_VIEWABLE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=api_error("Phase 2 quotes not yet available", "PHASE2_NOT_READY"),
@@ -75,20 +73,10 @@ def get_phase2_quotes(
     }
 
 
-class Phase2CorrectionRequest(BaseModel):
-    entity_type: CorrectionEntityType
-    entity_id: uuid.UUID
-    field_name: str | None = None
-    original_value: dict | None = None
-    corrected_value: dict | None = None
-    reason_category: ReasonCategory
-    reason_note: str | None = None
-
-
 @router.post("/api/videos/{video_id}/phase2/corrections")
 def log_phase2_correction(
     video_id: uuid.UUID,
-    body: Phase2CorrectionRequest,
+    body: CorrectionRequest,
     db: Session = Depends(get_db),
 ):
     video = get_video_or_404(video_id, db)

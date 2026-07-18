@@ -9,7 +9,15 @@ from app.database import get_db
 from app.errors import api_error, get_video_or_404
 from app.models.phase1 import NarrativeCluster, TranscriptChunk, TranscriptTurn
 from app.models.phase2 import Phase2Chunk, Quote
-from app.models.video import JobStatus, SpeakerRole, SpeakerRoleMap, TranscriptSegment, Video
+from app.models.video import (
+    JobStatus,
+    SPEAKER_REVIEW_STATUSES,
+    TRANSCRIPT_VIEWABLE_STATUSES,
+    SpeakerRole,
+    SpeakerRoleMap,
+    TranscriptSegment,
+    Video,
+)
 from app.services.storage import (
     DurationExceededError,
     FileTooLargeError,
@@ -100,14 +108,7 @@ def get_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
 def get_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
     video = get_video_or_404(video_id, db)
 
-    reviewable = {
-        JobStatus.ready_for_review, JobStatus.reviewed,
-        JobStatus.phase1_queued, JobStatus.phase1_processing,
-        JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
-        JobStatus.phase2_queued, JobStatus.phase2_processing,
-        JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
-    }
-    if video.status not in reviewable:
+    if video.status not in TRANSCRIPT_VIEWABLE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=api_error("Transcript not yet available", "TRANSCRIPT_NOT_READY"),
@@ -157,8 +158,7 @@ def assign_speakers(
 ):
     video = get_video_or_404(video_id, db)
 
-    reviewable = {JobStatus.ready_for_review, JobStatus.reviewed}
-    if video.status not in reviewable:
+    if video.status not in SPEAKER_REVIEW_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=api_error("Video not ready for review", "NOT_READY_FOR_REVIEW"),
@@ -255,14 +255,22 @@ def confirm_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
             ),
         )
 
-    video.status = JobStatus.reviewed
-    db.commit()
-
     # D3 (SPEC-002): auto-enqueue Phase 1 immediately after spec-1 confirm
     video.status = JobStatus.phase1_queued
     db.commit()
 
-    return {"video_id": str(video_id), "status": "reviewed"}
+    return {"video_id": str(video_id), "status": "phase1_queued"}
+
+
+def _clear_phase1_data(video_id: uuid.UUID, db: Session) -> None:
+    db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video_id))
+    db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video_id))
+    db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video_id))
+
+
+def _clear_phase2_data(video_id: uuid.UUID, db: Session) -> None:
+    db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
+    db.execute(delete(Quote).where(Quote.video_id == video_id))
 
 
 @router.post("/api/videos/{video_id}/retry")
@@ -293,18 +301,11 @@ def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
         video.status = JobStatus.queued
     elif not has_clusters:
         # Phase 1 failed — clean partial phase1 data (intermediate commits may have persisted rows)
-        # Delete TranscriptTurns (no FK cascade, direct delete)
-        db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video_id))
-        # Delete TranscriptChunks → DB cascades to ChunkNarrative, ChunkTheme, NotableMoment
-        db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video_id))
-        # NarrativeClusters should be absent, but clear defensively
-        db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video_id))
+        _clear_phase1_data(video_id, db)
         video.status = JobStatus.phase1_queued
     else:
         # Phase 2 failed — clean partial phase2 data
-        # Delete Phase2Chunks → DB cascades to QuoteCandidate
-        db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
-        db.execute(delete(Quote).where(Quote.video_id == video_id))
+        _clear_phase2_data(video_id, db)
         video.status = JobStatus.phase2_queued
 
     new_status = video.status
@@ -345,16 +346,12 @@ def rerun_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
         )
 
     if video.status in (JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed):
-        db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
-        db.execute(delete(Quote).where(Quote.video_id == video_id))
+        _clear_phase2_data(video_id, db)
         video.status = JobStatus.phase2_queued
     else:
         # phase1_ready_for_review or phase1_reviewed — clear phase1 + phase2 data
-        db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video_id))
-        db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video_id))
-        db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video_id))
-        db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
-        db.execute(delete(Quote).where(Quote.video_id == video_id))
+        _clear_phase1_data(video_id, db)
+        _clear_phase2_data(video_id, db)
         video.status = JobStatus.phase1_queued
 
     new_status = video.status
@@ -378,11 +375,8 @@ def rerun_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
         )
 
     # Clear all derived data in dependency order
-    db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
-    db.execute(delete(Quote).where(Quote.video_id == video_id))
-    db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video_id))
-    db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video_id))
-    db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video_id))
+    _clear_phase2_data(video_id, db)
+    _clear_phase1_data(video_id, db)
     db.execute(delete(SpeakerRoleMap).where(SpeakerRoleMap.video_id == video_id))
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.video_id == video_id))
     video.status = JobStatus.queued

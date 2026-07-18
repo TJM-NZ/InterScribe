@@ -1,7 +1,6 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,7 +15,8 @@ from app.models.phase1 import (
     NotableMoment,
     ReasonCategory,
 )
-from app.models.video import JobStatus, Video
+from app.models.video import JobStatus, PHASE1_VIEWABLE_STATUSES, Video
+from app.schemas import CorrectionRequest
 
 router = APIRouter()
 
@@ -25,12 +25,7 @@ router = APIRouter()
 def get_phase1_narrative(video_id: uuid.UUID, db: Session = Depends(get_db)):
     video = get_video_or_404(video_id, db)
 
-    reviewable = {
-        JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
-        JobStatus.phase2_queued, JobStatus.phase2_processing,
-        JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
-    }
-    if video.status not in reviewable:
+    if video.status not in PHASE1_VIEWABLE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=api_error("Phase 1 narrative not yet available", "PHASE1_NOT_READY"),
@@ -91,16 +86,6 @@ def get_phase1_narrative(video_id: uuid.UUID, db: Session = Depends(get_db)):
     }
 
 
-class CorrectionRequest(BaseModel):
-    entity_type: CorrectionEntityType
-    entity_id: uuid.UUID
-    field_name: str | None = None
-    original_value: dict | None = None
-    corrected_value: dict | None = None
-    reason_category: ReasonCategory
-    reason_note: str | None = None
-
-
 @router.post("/api/videos/{video_id}/phase1/corrections")
 def log_correction(
     video_id: uuid.UUID,
@@ -115,8 +100,7 @@ def log_correction(
             detail=api_error("Phase 1 review already confirmed", "PHASE1_ALREADY_REVIEWED"),
         )
 
-    reviewable = {JobStatus.phase1_ready_for_review}
-    if video.status not in reviewable:
+    if video.status != JobStatus.phase1_ready_for_review:
         raise HTTPException(
             status_code=409,
             detail=api_error("Phase 1 not ready for review", "PHASE1_NOT_READY"),
@@ -182,21 +166,6 @@ def log_correction(
     return {"correction_id": str(correction.id)}
 
 
-@router.post("/api/videos/{video_id}/phase1/enqueue")
-def enqueue_phase1(video_id: uuid.UUID, db: Session = Depends(get_db)):
-    video = get_video_or_404(video_id, db)
-
-    if video.status != JobStatus.reviewed:
-        raise HTTPException(
-            status_code=409,
-            detail=api_error("Video must be in 'reviewed' status to enqueue Phase 1", "INVALID_STATUS"),
-        )
-
-    video.status = JobStatus.phase1_queued
-    db.commit()
-
-    return {"video_id": str(video_id), "status": "phase1_queued"}
-
 
 @router.post("/api/videos/{video_id}/phase1/confirm-review")
 def confirm_phase1_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
@@ -208,11 +177,8 @@ def confirm_phase1_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
             detail=api_error("Video not at phase1_ready_for_review", "PHASE1_NOT_READY"),
         )
 
-    video.status = JobStatus.phase1_reviewed
-    db.commit()
-
     # D4 (SPEC-003): auto-enqueue Phase 2 immediately after phase1 confirm-review
     video.status = JobStatus.phase2_queued
     db.commit()
 
-    return {"video_id": str(video_id), "status": "phase1_reviewed"}
+    return {"video_id": str(video_id), "status": "phase2_queued"}
