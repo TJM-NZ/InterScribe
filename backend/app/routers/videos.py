@@ -362,3 +362,31 @@ def rerun_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
     db.commit()
 
     return {"video_id": str(video_id), "status": new_status.value}
+
+
+@router.post("/api/videos/{video_id}/rerun-transcript")
+def rerun_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
+    video = get_video_or_404(video_id, db)
+
+    if video.status not in _RERUN_TRANSCRIPT_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error(
+                f"Transcript rerun not allowed from status '{video.status.value}'",
+                "INVALID_STATUS",
+            ),
+        )
+
+    # Clear all derived data in dependency order
+    db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
+    db.execute(delete(Quote).where(Quote.video_id == video_id))
+    db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video_id))
+    db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video_id))
+    db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video_id))
+    db.execute(delete(SpeakerRoleMap).where(SpeakerRoleMap.video_id == video_id))
+    db.execute(delete(TranscriptSegment).where(TranscriptSegment.video_id == video_id))
+    video.status = JobStatus.queued
+    video.error_reason = None
+    db.commit()
+
+    return {"video_id": str(video_id), "status": JobStatus.queued.value}

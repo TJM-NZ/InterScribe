@@ -193,6 +193,12 @@ export async function rerunVideo(id: string): Promise<{ video_id: string; status
   return res.json();
 }
 
+export async function rerunTranscript(id: string): Promise<{ video_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/rerun-transcript`, { method: "POST" });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
 export async function getPhase2Quotes(
   id: string,
   view: "notable" | "top",

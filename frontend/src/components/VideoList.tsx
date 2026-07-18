@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { enqueuePhase1, rerunVideo, retryVideo, type VideoStatus, type VideoSummary } from "@/lib/api";
+import { enqueuePhase1, rerunTranscript, rerunVideo, retryVideo, type VideoStatus, type VideoSummary } from "@/lib/api";
 
 const STATUS_LABELS: Record<VideoStatus, string> = {
   uploaded: "Uploaded",
@@ -43,14 +43,44 @@ interface Props {
   onRefreshVideo: (id: string) => Promise<void>;
 }
 
+const POST_TRANSCRIPT_STATUSES = new Set<VideoStatus>([
+  "ready_for_review", "reviewed",
+  "phase1_ready_for_review", "phase1_reviewed",
+  "phase2_ready_for_review", "phase2_reviewed",
+]);
+
+function RerunTranscriptButton({ id, onRefreshVideo }: { id: string; onRefreshVideo: (id: string) => Promise<void> }) {
+  const [loading, setLoading] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        setLoading(true);
+        try {
+          await rerunTranscript(id);
+          await onRefreshVideo(id);
+        } finally {
+          setLoading(false);
+        }
+      }}
+      disabled={loading}
+      className="text-xs text-gray-400 hover:text-gray-600 hover:underline disabled:opacity-50"
+    >
+      {loading ? "Re-running…" : "Re-run transcript"}
+    </button>
+  );
+}
+
 function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: (id: string) => Promise<void> }) {
   const [loading, setLoading] = useState(false);
 
+  const showRerunTranscript = POST_TRANSCRIPT_STATUSES.has(v.status);
+
+  let primary: React.ReactNode = null;
+
   if (v.status === "ready_for_review") {
-    return <Link href={`/videos/${v.id}`} className="text-xs text-blue-600 hover:underline">Review transcript →</Link>;
-  }
-  if (v.status === "reviewed") {
-    return (
+    primary = <Link href={`/videos/${v.id}`} className="text-xs text-blue-600 hover:underline">Review transcript →</Link>;
+  } else if (v.status === "reviewed") {
+    primary = (
       <button
         onClick={async () => {
           setLoading(true);
@@ -67,15 +97,12 @@ function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: 
         {loading ? "Queuing…" : "Start analysis →"}
       </button>
     );
-  }
-  if (v.status === "phase1_ready_for_review") {
-    return <Link href={`/videos/${v.id}/phase1`} className="text-xs text-purple-600 hover:underline">Review narrative →</Link>;
-  }
-  if (v.status === "phase2_ready_for_review") {
-    return <Link href={`/videos/${v.id}/phase2`} className="text-xs text-violet-600 hover:underline">Review quotes →</Link>;
-  }
-  if (v.status === "phase1_reviewed") {
-    return (
+  } else if (v.status === "phase1_ready_for_review") {
+    primary = <Link href={`/videos/${v.id}/phase1`} className="text-xs text-purple-600 hover:underline">Review narrative →</Link>;
+  } else if (v.status === "phase2_ready_for_review") {
+    primary = <Link href={`/videos/${v.id}/phase2`} className="text-xs text-violet-600 hover:underline">Review quotes →</Link>;
+  } else if (v.status === "phase1_reviewed") {
+    primary = (
       <button
         onClick={async () => {
           setLoading(true);
@@ -92,9 +119,8 @@ function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: 
         {loading ? "Re-running…" : "Re-run Phase 1 →"}
       </button>
     );
-  }
-  if (v.status === "phase2_reviewed") {
-    return (
+  } else if (v.status === "phase2_reviewed") {
+    primary = (
       <button
         onClick={async () => {
           setLoading(true);
@@ -111,9 +137,8 @@ function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: 
         {loading ? "Re-running…" : "Re-run Phase 2 →"}
       </button>
     );
-  }
-  if (v.status === "failed") {
-    return (
+  } else if (v.status === "failed") {
+    primary = (
       <button
         onClick={async () => {
           setLoading(true);
@@ -131,7 +156,15 @@ function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: 
       </button>
     );
   }
-  return null;
+
+  if (!primary && !showRerunTranscript) return null;
+
+  return (
+    <div className="flex items-center gap-3">
+      {showRerunTranscript && <RerunTranscriptButton id={v.id} onRefreshVideo={onRefreshVideo} />}
+      {primary}
+    </div>
+  );
 }
 
 export default function VideoList({ videos, onRefreshVideo }: Props) {
