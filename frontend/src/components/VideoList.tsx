@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { enqueuePhase1, rerunTranscript, rerunVideo, retryVideo, type VideoStatus, type VideoSummary } from "@/lib/api";
 
@@ -43,126 +43,175 @@ interface Props {
   onRefreshVideo: (id: string) => Promise<void>;
 }
 
-const POST_TRANSCRIPT_STATUSES = new Set<VideoStatus>([
-  "ready_for_review", "reviewed",
-  "phase1_ready_for_review", "phase1_reviewed",
-  "phase2_ready_for_review", "phase2_reviewed",
-]);
-
-function RerunTranscriptButton({ id, onRefreshVideo }: { id: string; onRefreshVideo: (id: string) => Promise<void> }) {
-  const [loading, setLoading] = useState(false);
-  return (
-    <button
-      onClick={async () => {
-        setLoading(true);
-        try {
-          await rerunTranscript(id);
-          await onRefreshVideo(id);
-        } finally {
-          setLoading(false);
-        }
-      }}
-      disabled={loading}
-      className="text-xs text-gray-400 hover:text-gray-600 hover:underline disabled:opacity-50"
-    >
-      {loading ? "Re-running…" : "Re-run transcript"}
-    </button>
-  );
+function getDetailPath(videoId: string, status: VideoStatus): string | null {
+  if (status === "phase2_ready_for_review" || status === "phase2_reviewed") {
+    return `/videos/${videoId}/phase2`;
+  }
+  if (
+    status === "phase1_ready_for_review" ||
+    status === "phase1_reviewed" ||
+    status === "phase2_queued" ||
+    status === "phase2_processing"
+  ) {
+    return `/videos/${videoId}/phase1`;
+  }
+  if (
+    status === "ready_for_review" ||
+    status === "reviewed" ||
+    status === "phase1_queued" ||
+    status === "phase1_processing"
+  ) {
+    return `/videos/${videoId}`;
+  }
+  return null;
 }
 
-function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: (id: string) => Promise<void> }) {
-  const [loading, setLoading] = useState(false);
+interface DropdownAction {
+  label: string;
+  href?: string;
+  onClick?: () => Promise<void>;
+  style: "primary" | "secondary" | "danger";
+}
 
-  const showRerunTranscript = POST_TRANSCRIPT_STATUSES.has(v.status);
+function VideoActionsDropdown({
+  v,
+  onRefreshVideo,
+}: {
+  v: VideoSummary;
+  onRefreshVideo: (id: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
-  let primary: React.ReactNode = null;
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const actions: DropdownAction[] = [];
 
   if (v.status === "ready_for_review") {
-    primary = <Link href={`/videos/${v.id}`} className="text-xs text-blue-600 hover:underline">Review transcript →</Link>;
+    actions.push({ label: "Review transcript", href: `/videos/${v.id}`, style: "primary" });
   } else if (v.status === "reviewed") {
-    primary = (
-      <button
-        onClick={async () => {
-          setLoading(true);
-          try {
-            await enqueuePhase1(v.id);
-            await onRefreshVideo(v.id);
-          } finally {
-            setLoading(false);
-          }
-        }}
-        disabled={loading}
-        className="text-xs text-emerald-600 hover:underline disabled:opacity-50"
-      >
-        {loading ? "Queuing…" : "Start analysis →"}
-      </button>
-    );
+    actions.push({
+      label: "Start analysis",
+      onClick: async () => { await enqueuePhase1(v.id); await onRefreshVideo(v.id); },
+      style: "primary",
+    });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
+  } else if (v.status === "phase1_queued" || v.status === "phase1_processing") {
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
   } else if (v.status === "phase1_ready_for_review") {
-    primary = <Link href={`/videos/${v.id}/phase1`} className="text-xs text-purple-600 hover:underline">Review narrative →</Link>;
-  } else if (v.status === "phase2_ready_for_review") {
-    primary = <Link href={`/videos/${v.id}/phase2`} className="text-xs text-violet-600 hover:underline">Review quotes →</Link>;
+    actions.push({ label: "Review narrative", href: `/videos/${v.id}/phase1`, style: "primary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
   } else if (v.status === "phase1_reviewed") {
-    primary = (
-      <button
-        onClick={async () => {
-          setLoading(true);
-          try {
-            await rerunVideo(v.id);
-            await onRefreshVideo(v.id);
-          } finally {
-            setLoading(false);
-          }
-        }}
-        disabled={loading}
-        className="text-xs text-purple-600 hover:underline disabled:opacity-50"
-      >
-        {loading ? "Re-running…" : "Re-run Phase 1 →"}
-      </button>
-    );
+    actions.push({ label: "View narrative", href: `/videos/${v.id}/phase1`, style: "secondary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
+    actions.push({
+      label: "Re-run Phase 1",
+      onClick: async () => { await rerunVideo(v.id); await onRefreshVideo(v.id); },
+      style: "danger",
+    });
+  } else if (v.status === "phase2_queued" || v.status === "phase2_processing") {
+    actions.push({ label: "View narrative", href: `/videos/${v.id}/phase1`, style: "secondary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
+  } else if (v.status === "phase2_ready_for_review") {
+    actions.push({ label: "Review quotes", href: `/videos/${v.id}/phase2`, style: "primary" });
+    actions.push({ label: "View narrative", href: `/videos/${v.id}/phase1`, style: "secondary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
   } else if (v.status === "phase2_reviewed") {
-    primary = (
-      <button
-        onClick={async () => {
-          setLoading(true);
-          try {
-            await rerunVideo(v.id);
-            await onRefreshVideo(v.id);
-          } finally {
-            setLoading(false);
-          }
-        }}
-        disabled={loading}
-        className="text-xs text-violet-600 hover:underline disabled:opacity-50"
-      >
-        {loading ? "Re-running…" : "Re-run Phase 2 →"}
-      </button>
-    );
+    actions.push({ label: "View quotes", href: `/videos/${v.id}/phase2`, style: "secondary" });
+    actions.push({ label: "View narrative", href: `/videos/${v.id}/phase1`, style: "secondary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
+    actions.push({
+      label: "Re-run Phase 2",
+      onClick: async () => { await rerunVideo(v.id); await onRefreshVideo(v.id); },
+      style: "danger",
+    });
   } else if (v.status === "failed") {
-    primary = (
-      <button
-        onClick={async () => {
-          setLoading(true);
-          try {
-            await retryVideo(v.id);
-            await onRefreshVideo(v.id);
-          } finally {
-            setLoading(false);
-          }
-        }}
-        disabled={loading}
-        className="text-xs text-orange-600 hover:underline disabled:opacity-50"
-      >
-        {loading ? "Retrying…" : "Retry →"}
-      </button>
-    );
+    actions.push({
+      label: "Retry",
+      onClick: async () => { await retryVideo(v.id); await onRefreshVideo(v.id); },
+      style: "primary",
+    });
   }
 
-  if (!primary && !showRerunTranscript) return null;
+  const postTranscriptStatuses: VideoStatus[] = [
+    "ready_for_review", "reviewed",
+    "phase1_ready_for_review", "phase1_reviewed",
+    "phase2_ready_for_review", "phase2_reviewed",
+  ];
+  if (postTranscriptStatuses.includes(v.status)) {
+    actions.push({
+      label: "Re-run transcript",
+      onClick: async () => { await rerunTranscript(v.id); await onRefreshVideo(v.id); },
+      style: "danger",
+    });
+  }
+
+  if (actions.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-3">
-      {showRerunTranscript && <RerunTranscriptButton id={v.id} onRefreshVideo={onRefreshVideo} />}
-      {primary}
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 text-base leading-none"
+        title="Actions"
+        aria-label="Actions"
+      >
+        ···
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[190px]">
+          {actions.map((action) => {
+            const colorClass =
+              action.style === "primary"
+                ? "text-blue-600 font-medium"
+                : action.style === "danger"
+                ? "text-red-500"
+                : "text-gray-700";
+
+            if (action.href) {
+              return (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className={`block w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${colorClass}`}
+                  onClick={() => setOpen(false)}
+                >
+                  {action.label}
+                </Link>
+              );
+            }
+
+            return (
+              <button
+                key={action.label}
+                disabled={loading === action.label}
+                onClick={async () => {
+                  setLoading(action.label);
+                  try {
+                    await action.onClick!();
+                  } finally {
+                    setLoading(null);
+                    setOpen(false);
+                  }
+                }}
+                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50 ${colorClass}`}
+              >
+                {loading === action.label ? "…" : action.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -174,27 +223,47 @@ export default function VideoList({ videos, onRefreshVideo }: Props) {
 
   return (
     <ul className="mt-6 space-y-2" data-testid="video-list">
-      {videos.map((v) => (
-        <li key={v.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3 flex items-center justify-between">
-          <div className="min-w-0">
-            <p className="font-medium text-sm truncate" title={v.original_filename}>{v.original_filename}</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {v.media_type} {v.duration_seconds ? `· ${Math.round(v.duration_seconds / 60)} min` : ""}
-            </p>
-            {v.status === "failed" && v.error_reason && (
-              <p className="text-xs text-red-500 mt-0.5 truncate" title={v.error_reason}>
-                {v.error_reason}
+      {videos.map((v) => {
+        const detailPath = getDetailPath(v.id, v.status);
+        return (
+          <li
+            key={v.id}
+            className="bg-white border border-gray-200 rounded-lg px-4 py-3 flex items-center justify-between"
+          >
+            <div className="min-w-0 flex-1">
+              {detailPath ? (
+                <Link href={detailPath} className="group">
+                  <p
+                    className="font-medium text-sm truncate group-hover:text-blue-600 group-hover:underline"
+                    title={v.original_filename}
+                  >
+                    {v.original_filename}
+                  </p>
+                </Link>
+              ) : (
+                <p className="font-medium text-sm truncate" title={v.original_filename}>
+                  {v.original_filename}
+                </p>
+              )}
+              <p className="text-xs text-gray-400 mt-0.5">
+                {v.media_type}
+                {v.duration_seconds ? ` · ${Math.round(v.duration_seconds / 60)} min` : ""}
               </p>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[v.status]}`}>
-              {STATUS_LABELS[v.status]}
-            </span>
-            <VideoActions v={v} onRefreshVideo={onRefreshVideo} />
-          </div>
-        </li>
-      ))}
+              {v.status === "failed" && v.error_reason && (
+                <p className="text-xs text-red-500 mt-0.5 truncate" title={v.error_reason}>
+                  {v.error_reason}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-3 ml-4">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[v.status]}`}>
+                {STATUS_LABELS[v.status]}
+              </span>
+              <VideoActionsDropdown v={v} onRefreshVideo={onRefreshVideo} />
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
