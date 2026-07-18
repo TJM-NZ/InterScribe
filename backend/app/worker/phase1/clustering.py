@@ -1,13 +1,12 @@
-"""MiniLM embedding + agglomerative clustering for ChunkNarrative rows.
+"""MiniLM embedding + agglomerative clustering for ChunkTheme rows.
 
 Implements NARRATIVE_CLUSTER anchor from SPEC-002:
 - all-MiniLM-L6-v2 embeddings run on CPU (hard constraint)
 - cosine-distance agglomerative clustering
 - rank = cluster_size descending, ties broken by earliest chunk_index
-- representative_label derived deterministically from member domains/tones/tags
+- representative_label derived deterministically from member theme tags
 """
 import logging
-import uuid
 from collections import Counter
 
 import numpy as np
@@ -16,7 +15,7 @@ from sklearn.cluster import AgglomerativeClustering
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.phase1 import ChunkNarrative, NarrativeCluster, TranscriptChunk
+from app.models.phase1 import ChunkTheme, NarrativeCluster, TranscriptChunk
 
 logger = logging.getLogger(__name__)
 
@@ -29,41 +28,40 @@ def load_embedding_model() -> SentenceTransformer:
     )
 
 
-def _build_embedding_text(narrative: ChunkNarrative) -> str:
-    tags = " ".join(narrative.topic_tags) if narrative.topic_tags else ""
-    return f"{narrative.domain} {narrative.tone} {tags}"
+def _build_embedding_text(theme: ChunkTheme) -> str:
+    tags = " ".join(theme.topic_tags) if theme.topic_tags else ""
+    return f"{theme.topic_focus} {tags}"
 
 
-def _representative_label(narratives: list[ChunkNarrative]) -> str:
-    domain = Counter(n.domain for n in narratives).most_common(1)[0][0]
-    tone = Counter(n.tone for n in narratives).most_common(1)[0][0]
+def _representative_label(themes: list[ChunkTheme]) -> str:
     all_tags: list[str] = []
-    for n in narratives:
-        all_tags.extend(n.topic_tags or [])
-    top_tags = [t for t, _ in Counter(all_tags).most_common(5)]
+    for t in themes:
+        all_tags.extend(t.topic_tags or [])
+    top_tags = [tag for tag, _ in Counter(all_tags).most_common(5)]
     tag_str = ", ".join(top_tags) if top_tags else ""
-    return f"{domain} / {tone}" + (f": {tag_str}" if tag_str else "")
+    # Lead with a truncated focus from the first theme as the cluster headline
+    focus = themes[0].topic_focus.split(".")[0] if themes else "unknown"
+    return focus + (f": {tag_str}" if tag_str else "")
 
 
-def cluster_narratives(
+def cluster_themes(
     video_id,
-    narratives: list[ChunkNarrative],
+    themes: list[ChunkTheme],
     chunk_map: dict,  # chunk_id -> TranscriptChunk
     model: SentenceTransformer,
     db: Session,
 ) -> None:
-    """Embed narratives, cluster, create NarrativeCluster rows, update cluster_id."""
-    if not narratives:
+    """Embed themes, cluster, create NarrativeCluster rows, update cluster_id."""
+    if not themes:
         return
 
-    texts = [_build_embedding_text(n) for n in narratives]
+    texts = [_build_embedding_text(t) for t in themes]
     embeddings: np.ndarray = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
 
-    # Persist embeddings
-    for narrative, emb in zip(narratives, embeddings):
-        narrative.narrative_embedding = emb.tolist()
+    for theme, emb in zip(themes, embeddings):
+        theme.theme_embedding = emb.tolist()
 
-    if len(narratives) == 1:
+    if len(themes) == 1:
         labels = np.array([0])
     else:
         clf = AgglomerativeClustering(
@@ -75,17 +73,15 @@ def cluster_narratives(
         )
         labels = clf.fit_predict(embeddings)
 
-    # Group by label; track earliest chunk_index per cluster
-    clusters: dict[int, list[ChunkNarrative]] = {}
+    clusters: dict[int, list[ChunkTheme]] = {}
     cluster_min_chunk: dict[int, int] = {}
-    for narrative, label in zip(narratives, labels):
+    for theme, label in zip(themes, labels):
         label = int(label)
-        clusters.setdefault(label, []).append(narrative)
-        chunk = chunk_map.get(str(narrative.chunk_id))
+        clusters.setdefault(label, []).append(theme)
+        chunk = chunk_map.get(str(theme.chunk_id))
         chunk_idx = chunk.chunk_index if chunk else 0
         cluster_min_chunk[label] = min(cluster_min_chunk.get(label, chunk_idx), chunk_idx)
 
-    # Sort: cluster_size desc, then min_chunk_index asc
     sorted_labels = sorted(
         clusters.keys(),
         key=lambda lbl: (-len(clusters[lbl]), cluster_min_chunk[lbl]),
@@ -101,7 +97,7 @@ def cluster_narratives(
         )
         db.add(cluster)
         db.flush()
-        for narrative in members:
-            narrative.cluster_id = cluster.id
+        for theme in members:
+            theme.cluster_id = cluster.id
 
     db.flush()

@@ -254,7 +254,12 @@ def test_confirm_review_transitions_to_phase1_reviewed(client, db):
     resp = client.post(f"/api/videos/{v.id}/phase1/confirm-review")
 
     assert resp.status_code == 200
-    assert resp.json()["status"] == "phase1_reviewed"
+    assert resp.json()["status"] == "phase1_reviewed"  # response body = what was confirmed
+
+    # D4 (SPEC-003): DB must be phase2_queued immediately after confirm
+    db.expire(v)
+    db.refresh(v)
+    assert v.status == JobStatus.phase2_queued
 
 
 def test_confirm_review_blocked_if_not_phase1_ready(client, db):

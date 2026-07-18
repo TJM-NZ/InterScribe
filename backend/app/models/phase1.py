@@ -19,6 +19,7 @@ class CorrectionStage(str, PyEnum):
 class CorrectionEntityType(str, PyEnum):
     narrative_cluster = "narrative_cluster"
     notable_moment = "notable_moment"
+    quote = "quote"
 
 
 class ReasonCategory(str, PyEnum):
@@ -56,6 +57,7 @@ class TranscriptChunk(Base):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
     narrative: Mapped["ChunkNarrative | None"] = relationship(back_populates="chunk", uselist=False)
+    themes: Mapped[list["ChunkTheme"]] = relationship(back_populates="chunk")
     notable_moments: Mapped[list["NotableMoment"]] = relationship(back_populates="chunk")
 
 
@@ -70,7 +72,7 @@ class NarrativeCluster(Base):
     cluster_size: Mapped[int] = mapped_column(Integer, nullable=False)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    narratives: Mapped[list["ChunkNarrative"]] = relationship(back_populates="cluster")
+    themes: Mapped[list["ChunkTheme"]] = relationship(back_populates="cluster")
 
 
 class ChunkNarrative(Base):
@@ -87,13 +89,33 @@ class ChunkNarrative(Base):
     tone: Mapped[str] = mapped_column(String, nullable=False)
     topic_tags: Mapped[dict] = mapped_column(JSONB, nullable=False)
     narrative_embedding = mapped_column(Vector(384), nullable=False)
-    cluster_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("narrative_clusters.id"), nullable=True
-    )
     raw_qwen_output: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
     chunk: Mapped["TranscriptChunk"] = relationship(back_populates="narrative")
-    cluster: Mapped["NarrativeCluster | None"] = relationship(back_populates="narratives")
+
+
+class ChunkTheme(Base):
+    __tablename__ = "chunk_themes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chunk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transcript_chunks.id", ondelete="CASCADE"), nullable=False
+    )
+    video_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    theme_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    topic_focus: Mapped[str] = mapped_column(Text, nullable=False)
+    topic_tags: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    start_segment_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    end_segment_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    theme_embedding = mapped_column(Vector(384), nullable=False)
+    cluster_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("narrative_clusters.id"), nullable=True
+    )
+
+    chunk: Mapped["TranscriptChunk"] = relationship(back_populates="themes")
+    cluster: Mapped["NarrativeCluster | None"] = relationship(back_populates="themes")
 
 
 class NotableMoment(Base):
@@ -105,6 +127,9 @@ class NotableMoment(Base):
     )
     video_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    theme_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chunk_themes.id", ondelete="SET NULL"), nullable=True
     )
     start_segment_id: Mapped[int] = mapped_column(Integer, nullable=False)
     end_segment_id: Mapped[int] = mapped_column(Integer, nullable=False)

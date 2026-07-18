@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.phase1 import ChunkNarrative, NotableMoment, TranscriptChunk
+from app.models.phase1 import ChunkNarrative, ChunkTheme, NotableMoment, TranscriptChunk
 from app.models.video import JobStatus, MediaType, Video
-from app.worker.phase1.extraction import extract_chunk, _validate_notable_moments
+from app.worker.phase1.extraction import extract_chunk, _validate_notable_moments, _validate_themes
 
 
 def _make_video(db):
@@ -40,23 +40,36 @@ def _make_chunk(db, video_id, start_seg=0, end_seg=9):
 _MOCK_QWEN_RESPONSE = {
     "domain": "AI research",
     "tone": "technical",
-    "topic_tags": ["machine learning", "neural networks", "training"],
-    "notable_moments": [
-        {"start_segment_id": 2, "end_segment_id": 4, "description": "Key insight about scaling"},
+    "themes": [
+        {
+            "topic_focus": "Discussion of neural network scaling laws and their implications.",
+            "topic_tags": ["machine learning", "neural networks", "scaling"],
+            "start_segment_id": 0,
+            "end_segment_id": 4,
+            "notable_moments": [
+                {"start_segment_id": 2, "end_segment_id": 4, "description": "Key insight about scaling"},
+            ],
+        },
+        {
+            "topic_focus": "Practical challenges in training large models.",
+            "topic_tags": ["training", "compute", "hardware"],
+            "start_segment_id": 5,
+            "end_segment_id": 9,
+            "notable_moments": [],
+        },
     ],
 }
 
 
-def _mock_httpx_post(url, json=None, timeout=None):
-    resp = MagicMock()
-    resp.raise_for_status = MagicMock()
-    resp.json.return_value = {"message": {"content": json_str(_MOCK_QWEN_RESPONSE)}}
-    return resp
-
-
 def json_str(d):
-    import json
     return json.dumps(d)
+
+
+def _mock_post(response_dict):
+    m = MagicMock()
+    m.raise_for_status = MagicMock()
+    m.json.return_value = {"message": {"content": json_str(response_dict)}}
+    return m
 
 
 def test_extract_chunk_creates_narrative_row(db):
@@ -64,33 +77,43 @@ def test_extract_chunk_creates_narrative_row(db):
     chunk = _make_chunk(db, v.id)
     db.commit()
 
-    with patch("app.worker.phase1.extraction.httpx.post") as mock_post:
-        mock_post.return_value = MagicMock(
-            raise_for_status=MagicMock(),
-            json=MagicMock(return_value={"message": {"content": json_str(_MOCK_QWEN_RESPONSE)}}),
-        )
-        narrative = extract_chunk(chunk, "mock chunk text", db)
+    with patch("app.worker.phase1.extraction.httpx.post", return_value=_mock_post(_MOCK_QWEN_RESPONSE)):
+        narrative, themes = extract_chunk(chunk, "mock chunk text", db)
 
     db.commit()
 
     assert narrative.domain == "AI research"
     assert narrative.tone == "technical"
-    assert "machine learning" in narrative.topic_tags
     assert narrative.chunk_id == chunk.id
     assert narrative.video_id == v.id
 
 
-def test_extract_chunk_creates_notable_moments(db):
+def test_extract_chunk_creates_theme_rows(db):
+    v = _make_video(db)
+    chunk = _make_chunk(db, v.id)
+    db.commit()
+
+    with patch("app.worker.phase1.extraction.httpx.post", return_value=_mock_post(_MOCK_QWEN_RESPONSE)):
+        _narrative, themes = extract_chunk(chunk, "mock chunk text", db)
+
+    db.commit()
+
+    assert len(themes) == 2
+    assert themes[0].theme_index == 0
+    assert "neural network" in themes[0].topic_focus
+    assert "machine learning" in themes[0].topic_tags
+    assert themes[1].theme_index == 1
+    assert themes[0].chunk_id == chunk.id
+    assert themes[0].video_id == v.id
+
+
+def test_extract_chunk_creates_notable_moments_linked_to_theme(db):
     v = _make_video(db)
     chunk = _make_chunk(db, v.id, start_seg=0, end_seg=9)
     db.commit()
 
-    with patch("app.worker.phase1.extraction.httpx.post") as mock_post:
-        mock_post.return_value = MagicMock(
-            raise_for_status=MagicMock(),
-            json=MagicMock(return_value={"message": {"content": json_str(_MOCK_QWEN_RESPONSE)}}),
-        )
-        extract_chunk(chunk, "mock chunk text", db)
+    with patch("app.worker.phase1.extraction.httpx.post", return_value=_mock_post(_MOCK_QWEN_RESPONSE)):
+        _narrative, themes = extract_chunk(chunk, "mock chunk text", db)
 
     db.commit()
 
@@ -99,25 +122,22 @@ def test_extract_chunk_creates_notable_moments(db):
     assert moments[0].start_segment_id == 2
     assert moments[0].end_segment_id == 4
     assert "scaling" in moments[0].description
+    assert moments[0].theme_id == themes[0].id
 
 
-def test_extract_chunk_no_notable_moments(db):
+def test_extract_chunk_no_themes(db):
     v = _make_video(db)
     chunk = _make_chunk(db, v.id)
     db.commit()
 
-    empty_response = {**_MOCK_QWEN_RESPONSE, "notable_moments": []}
-    with patch("app.worker.phase1.extraction.httpx.post") as mock_post:
-        mock_post.return_value = MagicMock(
-            raise_for_status=MagicMock(),
-            json=MagicMock(return_value={"message": {"content": json_str(empty_response)}}),
-        )
-        extract_chunk(chunk, "text", db)
+    empty_response = {**_MOCK_QWEN_RESPONSE, "themes": []}
+    with patch("app.worker.phase1.extraction.httpx.post", return_value=_mock_post(empty_response)):
+        _narrative, themes = extract_chunk(chunk, "text", db)
 
     db.commit()
 
-    moments = db.query(NotableMoment).filter_by(video_id=v.id).all()
-    assert len(moments) == 0
+    assert themes == []
+    assert db.query(NotableMoment).filter_by(video_id=v.id).count() == 0
 
 
 def test_extract_chunk_retries_on_failure(db):
@@ -132,14 +152,11 @@ def test_extract_chunk_retries_on_failure(db):
         call_count += 1
         if call_count < 2:
             raise ConnectionError("timeout")
-        m = MagicMock()
-        m.raise_for_status = MagicMock()
-        m.json.return_value = {"message": {"content": json_str(_MOCK_QWEN_RESPONSE)}}
-        return m
+        return _mock_post(_MOCK_QWEN_RESPONSE)
 
     with patch("app.worker.phase1.extraction.httpx.post", side_effect=flaky_post):
         with patch("app.worker.phase1.extraction.time.sleep"):
-            narrative = extract_chunk(chunk, "text", db)
+            narrative, themes = extract_chunk(chunk, "text", db)
 
     assert call_count == 2
     assert narrative.domain == "AI research"
@@ -174,3 +191,23 @@ def test_validate_notable_moments_skips_missing_description():
         chunk_end=9,
     )
     assert len(moments) == 0
+
+
+def test_validate_themes_skips_missing_focus():
+    themes = _validate_themes(
+        [{"topic_focus": "", "topic_tags": ["ml"], "start_segment_id": 0, "end_segment_id": 5, "notable_moments": []}],
+        chunk_start=0,
+        chunk_end=9,
+    )
+    assert len(themes) == 0
+
+
+def test_validate_themes_clamps_segment_ids():
+    themes = _validate_themes(
+        [{"topic_focus": "Some topic.", "topic_tags": [], "start_segment_id": -3, "end_segment_id": 100, "notable_moments": []}],
+        chunk_start=0,
+        chunk_end=9,
+    )
+    assert len(themes) == 1
+    assert themes[0]["start_segment_id"] == 0
+    assert themes[0]["end_segment_id"] == 9

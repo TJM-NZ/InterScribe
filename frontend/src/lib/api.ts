@@ -65,7 +65,7 @@ export interface NotableMoment {
   reviewed: boolean;
 }
 
-export type CorrectionEntityType = "narrative_cluster" | "notable_moment";
+export type CorrectionEntityType = "narrative_cluster" | "notable_moment" | "quote";
 
 export type ReasonCategory =
   | "model_error"
@@ -76,6 +76,22 @@ export type ReasonCategory =
 export interface Phase1Narrative {
   clusters: NarrativeCluster[];
   notable_moments: NotableMoment[];
+}
+
+export interface Quote {
+  id: string;
+  video_id: string;
+  start_segment_id: number;
+  end_segment_id: number;
+  start_ts: number;
+  end_ts: number;
+  quote_text: string;
+  speaker_label: string;
+  narrative_alignment_score: number;
+  is_notable_moment: boolean;
+  notable_moment_id: string | null;
+  source_candidate_ids: string[];
+  reviewed: boolean;
 }
 
 export async function listVideos(): Promise<VideoSummary[]> {
@@ -167,6 +183,47 @@ export async function confirmPhase1Review(id: string): Promise<{ video_id: strin
 
 export async function retryVideo(id: string): Promise<{ video_id: string; status: string }> {
   const res = await fetch(`${API_BASE}/api/videos/${id}/retry`, { method: "POST" });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function getPhase2Quotes(
+  id: string,
+  view: "notable" | "top",
+  limit?: number
+): Promise<{ quotes: Quote[] }> {
+  const params = new URLSearchParams({ view });
+  if (limit !== undefined) params.set("limit", String(limit));
+  const res = await fetch(`${API_BASE}/api/videos/${id}/phase2/quotes?${params}`);
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function logPhase2Correction(
+  videoId: string,
+  payload: {
+    entity_type: "quote";
+    entity_id: string;
+    field_name: string | null;
+    original_value: Record<string, unknown> | null;
+    corrected_value: Record<string, unknown> | null;
+    reason_category: ReasonCategory;
+    reason_note: string | null;
+  }
+): Promise<{ correction_id: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${videoId}/phase2/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function confirmPhase2Review(id: string): Promise<{ video_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/phase2/confirm-review`, {
+    method: "POST",
+  });
   if (!res.ok) throw await res.json();
   return res.json();
 }

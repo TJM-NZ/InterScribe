@@ -13,7 +13,7 @@ from app.models.phase1 import TranscriptChunk, TranscriptTurn
 
 def build_chunks(
     video_id, turns: list[TranscriptTurn], max_tokens: int, db: Session
-) -> list[TranscriptChunk]:
+) -> tuple[list[TranscriptChunk], list[list[TranscriptTurn]]]:
     """Greedy chunking: fill until next turn would overflow, then close current chunk."""
     if not turns:
         return []

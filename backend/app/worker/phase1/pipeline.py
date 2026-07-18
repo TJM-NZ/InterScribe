@@ -1,6 +1,6 @@
 """Orchestrate the full Phase 1 pipeline for a single video.
 
-Flow: group segments → turns → chunks → Qwen extraction per chunk → cluster → phase1_ready_for_review
+Flow: group segments → turns → chunks → Qwen extraction per chunk → cluster themes → phase1_ready_for_review
 """
 import logging
 
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.video import JobStatus, Video
 from app.worker.phase1.chunking import build_chunks, chunk_text_for_qwen
-from app.worker.phase1.clustering import cluster_narratives, load_embedding_model
+from app.worker.phase1.clustering import cluster_themes, load_embedding_model
 from app.worker.phase1.extraction import extract_chunk, _pull_model_if_needed
 from app.worker.phase1.turns import build_turns
 
@@ -33,18 +33,18 @@ def process_phase1(video: Video, db: Session) -> None:
     )
     db.commit()
 
-    logger.info("Phase 1: extracting narrative from %d chunks for video %s", len(chunks), video.id)
-    narratives = []
+    logger.info("Phase 1: extracting themes from %d chunks for video %s", len(chunks), video.id)
+    all_themes = []
     for chunk, group in zip(chunks, chunk_groups):
         chunk_text = chunk_text_for_qwen(group)
-        narrative = extract_chunk(chunk, chunk_text, db)
-        narratives.append(narrative)
+        _narrative, themes = extract_chunk(chunk, chunk_text, db)
+        all_themes.extend(themes)
         db.commit()
 
-    logger.info("Phase 1: clustering %d narratives for video %s", len(narratives), video.id)
+    logger.info("Phase 1: clustering %d themes for video %s", len(all_themes), video.id)
     embedding_model = load_embedding_model()
     chunk_map = {str(c.id): c for c in chunks}
-    cluster_narratives(video.id, narratives, chunk_map, embedding_model, db)
+    cluster_themes(video.id, all_themes, chunk_map, embedding_model, db)
     db.commit()
 
     video.status = JobStatus.phase1_ready_for_review

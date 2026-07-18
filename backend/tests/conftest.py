@@ -30,6 +30,9 @@ os.environ.setdefault("NARRATIVE_CLUSTER_THRESHOLD", "0.3")
 os.environ.setdefault("NARRATIVE_TOP_N", "5")
 os.environ.setdefault("NARRATIVE_CHUNK_MAX_TOKENS", "10000")
 os.environ.setdefault("NARRATIVE_CHUNK_RETRIES", "3")
+os.environ.setdefault("PHASE2_OVERLAP_TURNS", "2")
+os.environ.setdefault("PHASE2_DEDUP_OVERLAP_RATIO", "0.5")
+os.environ.setdefault("PHASE2_DEDUP_TEXT_SIMILARITY", "0.85")
 
 # Create test database (drop + recreate for a clean slate each run)
 _admin_url = _base_url.rsplit("/", 1)[0] + "/postgres"
@@ -44,6 +47,7 @@ from app.config import settings  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 import app.models.video  # noqa: F401, E402
 import app.models.phase1  # noqa: F401, E402
+import app.models.phase2  # noqa: F401, E402
 from app.main import app  # noqa: E402
 
 engine = create_engine(TEST_DATABASE_URL)

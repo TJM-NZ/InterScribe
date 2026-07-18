@@ -35,7 +35,11 @@ def _get_video_or_404(video_id: uuid.UUID, db: Session) -> Video:
 def get_phase1_narrative(video_id: uuid.UUID, db: Session = Depends(get_db)):
     video = _get_video_or_404(video_id, db)
 
-    reviewable = {JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed}
+    reviewable = {
+        JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
+        JobStatus.phase2_queued, JobStatus.phase2_processing,
+        JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
+    }
     if video.status not in reviewable:
         raise HTTPException(
             status_code=409,
@@ -155,6 +159,15 @@ def log_correction(
             new_desc = body.corrected_value.get("description")
             if new_desc:
                 entity.description = str(new_desc)
+    elif body.entity_type == CorrectionEntityType.quote:
+        # quote corrections belong to the Phase 2 endpoint (C8)
+        raise HTTPException(
+            status_code=400,
+            detail=_error(
+                "Quote corrections must be submitted to POST /phase2/corrections",
+                "WRONG_STAGE",
+            ),
+        )
     else:
         raise HTTPException(
             status_code=400,
@@ -206,6 +219,10 @@ def confirm_phase1_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
         )
 
     video.status = JobStatus.phase1_reviewed
+    db.commit()
+
+    # D4 (SPEC-003): auto-enqueue Phase 2 immediately after phase1 confirm-review
+    video.status = JobStatus.phase2_queued
     db.commit()
 
     return {"video_id": str(video_id), "status": "phase1_reviewed"}

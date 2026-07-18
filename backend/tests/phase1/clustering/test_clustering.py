@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from app.models.phase1 import ChunkNarrative, NarrativeCluster, TranscriptChunk
+from app.models.phase1 import ChunkTheme, NarrativeCluster, NotableMoment, TranscriptChunk
 from app.models.video import JobStatus, MediaType, Video
-from app.worker.phase1.clustering import cluster_narratives, _representative_label
+from app.worker.phase1.clustering import cluster_themes, _representative_label
 
 
 def _make_video(db):
@@ -37,19 +37,20 @@ def _make_chunk(db, video_id, chunk_index):
     return c
 
 
-def _make_narrative(db, chunk, domain="AI", tone="technical", tags=None):
-    n = ChunkNarrative(
+def _make_theme(db, chunk, theme_index=0, focus="Test topic.", tags=None):
+    t = ChunkTheme(
         chunk_id=chunk.id,
         video_id=chunk.video_id,
-        domain=domain,
-        tone=tone,
+        theme_index=theme_index,
+        topic_focus=focus,
         topic_tags=tags or ["ml"],
-        narrative_embedding=[0.0] * 384,
-        raw_qwen_output={},
+        start_segment_id=chunk.start_segment_id,
+        end_segment_id=chunk.end_segment_id,
+        theme_embedding=[0.0] * 384,
     )
-    db.add(n)
+    db.add(t)
     db.flush()
-    return n
+    return t
 
 
 def _mock_model(embeddings: list[list[float]]):
@@ -58,14 +59,14 @@ def _mock_model(embeddings: list[list[float]]):
     return model
 
 
-def test_single_narrative_produces_one_cluster(db):
+def test_single_theme_produces_one_cluster(db):
     v = _make_video(db)
     chunk = _make_chunk(db, v.id, 0)
-    narrative = _make_narrative(db, chunk)
+    theme = _make_theme(db, chunk)
     db.commit()
 
     model = _mock_model([[0.1] * 384])
-    cluster_narratives(v.id, [narrative], {str(chunk.id): chunk}, model, db)
+    cluster_themes(v.id, [theme], {str(chunk.id): chunk}, model, db)
     db.commit()
 
     clusters = db.query(NarrativeCluster).filter_by(video_id=v.id).all()
@@ -74,15 +75,14 @@ def test_single_narrative_produces_one_cluster(db):
     assert clusters[0].rank == 1
 
 
-def test_similar_narratives_cluster_together(db):
+def test_similar_themes_cluster_together(db):
     v = _make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(3)]
-    narratives = [_make_narrative(db, c) for c in chunks]
+    themes = [_make_theme(db, c) for c in chunks]
     db.commit()
 
-    # All identical embeddings → all in one cluster
     model = _mock_model([[1.0] + [0.0] * 383] * 3)
-    cluster_narratives(v.id, narratives, {str(c.id): c for c in chunks}, model, db)
+    cluster_themes(v.id, themes, {str(c.id): c for c in chunks}, model, db)
     db.commit()
 
     clusters = db.query(NarrativeCluster).filter_by(video_id=v.id).all()
@@ -91,18 +91,17 @@ def test_similar_narratives_cluster_together(db):
     assert clusters[0].rank == 1
 
 
-def test_distinct_narratives_produce_separate_clusters(db):
+def test_distinct_themes_produce_separate_clusters(db):
     v = _make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(4)]
-    narratives = [
-        _make_narrative(db, chunks[0], domain="A"),
-        _make_narrative(db, chunks[1], domain="A"),
-        _make_narrative(db, chunks[2], domain="B"),
-        _make_narrative(db, chunks[3], domain="C"),
+    themes = [
+        _make_theme(db, chunks[0], focus="AI topic."),
+        _make_theme(db, chunks[1], focus="AI topic."),
+        _make_theme(db, chunks[2], focus="Healthcare topic."),
+        _make_theme(db, chunks[3], focus="Policy topic."),
     ]
     db.commit()
 
-    # Two near-identical embeddings (A, A) and two orthogonal (B, C)
     embs = [
         [1.0, 0.0] + [0.0] * 382,
         [1.0, 0.0] + [0.0] * 382,
@@ -110,11 +109,10 @@ def test_distinct_narratives_produce_separate_clusters(db):
         [0.0, 0.0, 1.0] + [0.0] * 381,
     ]
     model = _mock_model(embs)
-    cluster_narratives(v.id, narratives, {str(c.id): c for c in chunks}, model, db)
+    cluster_themes(v.id, themes, {str(c.id): c for c in chunks}, model, db)
     db.commit()
 
     clusters = db.query(NarrativeCluster).filter_by(video_id=v.id).all()
-    # Expect: A+A (size 2), B (size 1), C (size 1)
     sizes = sorted([c.cluster_size for c in clusters], reverse=True)
     assert sizes[0] == 2
 
@@ -122,15 +120,9 @@ def test_distinct_narratives_produce_separate_clusters(db):
 def test_rank_by_size_descending(db):
     v = _make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(4)]
-    narratives = [
-        _make_narrative(db, chunks[0]),
-        _make_narrative(db, chunks[1]),
-        _make_narrative(db, chunks[2]),
-        _make_narrative(db, chunks[3]),
-    ]
+    themes = [_make_theme(db, c) for c in chunks]
     db.commit()
 
-    # First two cluster together (size 2), last two separate (size 1 each)
     embs = [
         [1.0] + [0.0] * 383,
         [1.0] + [0.0] * 383,
@@ -138,7 +130,7 @@ def test_rank_by_size_descending(db):
         [0.0, 0.0, 1.0] + [0.0] * 381,
     ]
     model = _mock_model(embs)
-    cluster_narratives(v.id, narratives, {str(c.id): c for c in chunks}, model, db)
+    cluster_themes(v.id, themes, {str(c.id): c for c in chunks}, model, db)
     db.commit()
 
     clusters = sorted(
@@ -151,8 +143,6 @@ def test_rank_by_size_descending(db):
 
 def test_notable_moments_pass_through_even_if_singleton(db):
     """Sanity check: single notable moment in 8 chunks is present unconditionally."""
-    from app.models.phase1 import NotableMoment
-
     v = _make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(8)]
     db.add(NotableMoment(
@@ -173,11 +163,12 @@ def test_notable_moments_pass_through_even_if_singleton(db):
     assert moments[0].description == "A rare key moment"
 
 
-def test_representative_label_uses_most_common_domain():
-    narratives = [
-        MagicMock(domain="AI", tone="technical", topic_tags=["ml", "data"]),
-        MagicMock(domain="AI", tone="formal", topic_tags=["ml", "ethics"]),
-        MagicMock(domain="Healthcare", tone="technical", topic_tags=["policy"]),
+def test_representative_label_uses_top_tags():
+    themes = [
+        MagicMock(topic_focus="AI scaling.", topic_tags=["ml", "data"]),
+        MagicMock(topic_focus="Ethics.", topic_tags=["ml", "ethics"]),
+        MagicMock(topic_focus="Policy.", topic_tags=["policy"]),
     ]
-    label = _representative_label(narratives)
-    assert "AI" in label
+    label = _representative_label(themes)
+    assert "ml" in label
+    assert "AI scaling" in label

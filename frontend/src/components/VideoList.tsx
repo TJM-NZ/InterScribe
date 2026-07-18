@@ -71,6 +71,9 @@ function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: 
   if (v.status === "phase1_ready_for_review") {
     return <Link href={`/videos/${v.id}/phase1`} className="text-xs text-purple-600 hover:underline">Review narrative →</Link>;
   }
+  if (v.status === "phase2_ready_for_review") {
+    return <Link href={`/videos/${v.id}/phase2`} className="text-xs text-violet-600 hover:underline">Review quotes →</Link>;
+  }
   if (v.status === "failed") {
     return (
       <button

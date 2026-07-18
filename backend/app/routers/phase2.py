@@ -1,0 +1,167 @@
+import uuid
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.phase1 import (
+    Correction,
+    CorrectionEntityType,
+    CorrectionStage,
+    ReasonCategory,
+)
+from app.models.phase2 import Quote
+from app.models.video import JobStatus, Video
+
+router = APIRouter()
+
+
+def _error(msg: str, code: str, trace_id: uuid.UUID | None = None) -> dict:
+    return {"error": msg, "code": code, "trace_id": str(trace_id or uuid.uuid4())}
+
+
+def _get_video_or_404(video_id: uuid.UUID, db: Session) -> Video:
+    video = db.get(Video, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
+    return video
+
+
+@router.get("/api/videos/{video_id}/phase2/quotes")
+def get_phase2_quotes(
+    video_id: uuid.UUID,
+    view: Optional[str] = Query(None),
+    limit: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+):
+    video = _get_video_or_404(video_id, db)
+
+    if view not in ("notable", "top"):
+        raise HTTPException(
+            status_code=400,
+            detail=_error("view must be 'notable' or 'top'", "INVALID_VIEW"),
+        )
+
+    reviewable = {JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed}
+    if video.status not in reviewable:
+        raise HTTPException(
+            status_code=409,
+            detail=_error("Phase 2 quotes not yet available", "PHASE2_NOT_READY"),
+        )
+
+    q = select(Quote).where(Quote.video_id == video_id)
+
+    if view == "notable":
+        q = q.where(Quote.is_notable_moment.is_(True)).order_by(Quote.start_segment_id)
+    else:
+        q = q.order_by(Quote.narrative_alignment_score.desc())
+        if limit is not None:
+            q = q.limit(limit)
+
+    quotes = db.execute(q).scalars().all()
+
+    return {
+        "quotes": [
+            {
+                "id": str(quote.id),
+                "video_id": str(quote.video_id),
+                "start_segment_id": quote.start_segment_id,
+                "end_segment_id": quote.end_segment_id,
+                "start_ts": quote.start_ts,
+                "end_ts": quote.end_ts,
+                "quote_text": quote.quote_text,
+                "speaker_label": quote.speaker_label,
+                "narrative_alignment_score": quote.narrative_alignment_score,
+                "is_notable_moment": quote.is_notable_moment,
+                "notable_moment_id": str(quote.notable_moment_id) if quote.notable_moment_id else None,
+                "source_candidate_ids": quote.source_candidate_ids,
+                "reviewed": quote.reviewed,
+            }
+            for quote in quotes
+        ]
+    }
+
+
+class Phase2CorrectionRequest(BaseModel):
+    entity_type: CorrectionEntityType
+    entity_id: uuid.UUID
+    field_name: str | None = None
+    original_value: dict | None = None
+    corrected_value: dict | None = None
+    reason_category: ReasonCategory
+    reason_note: str | None = None
+
+
+@router.post("/api/videos/{video_id}/phase2/corrections")
+def log_phase2_correction(
+    video_id: uuid.UUID,
+    body: Phase2CorrectionRequest,
+    db: Session = Depends(get_db),
+):
+    video = _get_video_or_404(video_id, db)
+
+    if video.status == JobStatus.phase2_reviewed:
+        raise HTTPException(
+            status_code=409,
+            detail=_error("Phase 2 review already confirmed", "PHASE2_ALREADY_REVIEWED"),
+        )
+
+    if video.status != JobStatus.phase2_ready_for_review:
+        raise HTTPException(
+            status_code=409,
+            detail=_error("Phase 2 not ready for review", "PHASE2_NOT_READY"),
+        )
+
+    if body.entity_type != CorrectionEntityType.quote:
+        raise HTTPException(
+            status_code=400,
+            detail=_error(
+                "Phase 2 corrections only accept entity_type 'quote'",
+                "INVALID_ENTITY_TYPE",
+            ),
+        )
+
+    quote = db.get(Quote, body.entity_id)
+    if not quote or quote.video_id != video_id:
+        raise HTTPException(
+            status_code=400,
+            detail=_error("entity_id does not belong to this video", "INVALID_ENTITY"),
+        )
+
+    quote.reviewed = True
+
+    correction = Correction(
+        video_id=video_id,
+        stage=CorrectionStage.phase2,
+        entity_type=body.entity_type,
+        entity_id=body.entity_id,
+        field_name=body.field_name,
+        original_value=body.original_value,
+        corrected_value=body.corrected_value,
+        reason_category=body.reason_category,
+        reason_note=body.reason_note,
+    )
+    db.add(correction)
+    db.commit()
+    db.refresh(correction)
+
+    return {"correction_id": str(correction.id)}
+
+
+@router.post("/api/videos/{video_id}/phase2/confirm-review")
+def confirm_phase2_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
+    video = _get_video_or_404(video_id, db)
+
+    if video.status != JobStatus.phase2_ready_for_review:
+        raise HTTPException(
+            status_code=409,
+            detail=_error("Video not at phase2_ready_for_review", "PHASE2_NOT_READY"),
+        )
+
+    video.status = JobStatus.phase2_reviewed
+    db.commit()
+
+    return {"video_id": str(video_id), "status": "phase2_reviewed"}

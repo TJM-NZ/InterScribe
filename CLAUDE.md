@@ -2,7 +2,7 @@
 
 AI audio/video editor — ingestion, transcription, narrative extraction. Specs 1–5.
 
-Specs: `.claude/docs/SPEC-001.md` (complete — all 4 gates passed) | `.claude/docs/SPEC-002.md` (active)
+Specs: `.claude/docs/SPEC-001.md` (complete — all 4 gates passed) | `.claude/docs/SPEC-002.md` (complete — all 4 gates passed) | `.claude/docs/SPEC-003.md` (active)
 
 ## Stack
 
@@ -111,17 +111,22 @@ Gate 2 Review UI (Spec 2)
 
 ## Job Status Flow
 
-`uploaded → queued → transcribing → ready_for_review → reviewed → phase1_queued → phase1_processing → phase1_ready_for_review → phase1_reviewed | failed`
+`uploaded → queued → transcribing → ready_for_review → reviewed → phase1_queued → phase1_processing → phase1_ready_for_review → phase1_reviewed → phase2_queued → phase2_processing → phase2_ready_for_review → phase2_reviewed | failed`
 
 Linear only, no skipping. `failed` can occur at any stage; `error_reason` populated.
 `reviewed → phase1_queued` is automatic (side effect of POST /confirm-review).
+`phase1_reviewed → phase2_queued` is automatic (side effect of POST /phase1/confirm-review).
 
 ## Load-Bearing Schema Notes
 
 `segment_id` (sequential int per video) and `speaker_label` in `TranscriptSegment` are grounding keys for all future specs — do not rename.
 `SpeakerRoleMap` role enum (`interviewer|interviewee|unknown`) used for filtering in Specs 2+.
-`TranscriptTurn` (Spec 2) is the unit fed to Qwen — Spec 3 must reuse, not reimplement turn grouping.
+`TranscriptTurn` (Spec 2) is the unit fed to Qwen — Spec 3 reuses, does not reimplement turn grouping.
 `NarrativeCluster` rank (cluster_size descending) is the fixed anchor injected into every Spec 3 prompt — do not change ranking semantics without flagging Spec 3 impact.
+`QuoteCandidate` (Spec 3) is never deleted after dedup — discarded rows preserved for audit/Spec 4 learning loop.
+`Quote.source_candidate_ids` is JSONB (not a relational FK) — intentional, preserves audit trail without cascading deletes.
+`narrative_alignment_score` uses `ChunkTheme.theme_embedding` vectors (Spec 2) — do not remove these columns.
+Qwen never outputs quote text/timestamps — all text/ts resolved deterministically from `TranscriptSegment` rows.
 
 ## Environment Variables
 
@@ -132,6 +137,9 @@ Key non-obvious ones:
 - `HF_HOME` + `WHISPER_MODEL_CACHE` — model cache dirs (pre-populate to avoid re-download)
 - `OLLAMA_BASE_URL` — Ollama service URL (default: `http://ollama:11434`)
 - `QWEN_MODEL` — model tag (default: `qwen3.5:9b`)
+- `PHASE2_OVERLAP_TURNS` — overlap window in whole turns per chunk boundary (default: `2`)
+- `PHASE2_DEDUP_OVERLAP_RATIO` — segment range overlap ratio threshold for dedup (default: `0.5`)
+- `PHASE2_DEDUP_TEXT_SIMILARITY` — SequenceMatcher ratio threshold for dedup (default: `0.85`)
 
 ## Naming Conventions
 
@@ -149,5 +157,9 @@ snake_case Python | camelCase TypeScript | kebab-case files | snake_case Postgre
 | 2 | 2 | Embedding clustering → ranked NarrativeCluster rows | `pytest tests/phase1/clustering/ -v` |
 | 2 | 3 | Gate 2 review UI complete | `pytest tests/phase1/review/` + `vitest run phase1-review-ui.test.ts` |
 | 2 | 4 | Fresh-clone deployability with Spec 2 migrations | `docker compose up --build -d && curl -f http://localhost:8000/health` |
+| 3 | 1 | Phase2Chunk creation + quote candidates grounded to segment IDs | `pytest tests/phase2/chunking/ tests/phase2/extraction/ -v` |
+| 3 | 2 | Interviewee-only filtering + rule-based dedup → Quote rows | `pytest tests/phase2/grounding/ tests/phase2/dedup/ -v` |
+| 3 | 3 | Gate 3 review UI complete (quotes track + confirm-review) | `pytest tests/phase2/review/` + `vitest run phase2-review-ui.test.ts` |
+| 3 | 4 | Fresh-clone deployability with Spec 3 migrations | `docker compose up --build -d && curl -f http://localhost:8000/health` |
 
 Failure at any gate = stop, log to spec Change Protocol, wait for input.

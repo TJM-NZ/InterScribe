@@ -31,5 +31,10 @@ class Settings(BaseSettings):
     # per-chunk Qwen retry attempts before failing the whole video
     narrative_chunk_retries: int = 3
 
+    # Phase 2 — quote extraction (D1, D2 from SPEC-003 Change Protocol)
+    phase2_overlap_turns: int = 2
+    phase2_dedup_overlap_ratio: float = 0.5
+    phase2_dedup_text_similarity: float = 0.85
+
 
 settings = Settings()
