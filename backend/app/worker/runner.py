@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Callable
 
 from sqlalchemy import select
 
@@ -66,13 +67,21 @@ def _pick_next_phase2(db) -> Video | None:
     ).scalar_one_or_none()
 
 
-def _run_transcription(video: Video, db) -> None:
-    video.status = JobStatus.transcribing
+def _run_pipeline(
+    video: Video,
+    db,
+    processing_status: JobStatus,
+    pipeline_fn: Callable,
+    label: str,
+    *,
+    unload_gpu: bool = False,
+) -> None:
+    video.status = processing_status
     video.error_reason = None
     db.commit()
     try:
-        transcribe_video(video, db)
-        logger.info("Transcription complete for video %s", video.id)
+        pipeline_fn(video, db)
+        logger.info("%s complete for video %s", label, video.id)
     except Exception as exc:
         db.rollback()
         with SessionLocal() as err_db:
@@ -81,47 +90,22 @@ def _run_transcription(video: Video, db) -> None:
                 v.status = JobStatus.failed
                 v.error_reason = str(exc)[:500]
                 err_db.commit()
-        logger.error("Transcription failed for video %s: %s", video.id, exc)
+        logger.error("%s failed for video %s: %s", label, video.id, exc)
+    finally:
+        if unload_gpu:
+            unload_qwen_model()
+
+
+def _run_transcription(video: Video, db) -> None:
+    _run_pipeline(video, db, JobStatus.transcribing, transcribe_video, "Transcription")
 
 
 def _run_phase1(video: Video, db) -> None:
-    video.status = JobStatus.phase1_processing
-    video.error_reason = None
-    db.commit()
-    try:
-        process_phase1(video, db)
-        logger.info("Phase 1 complete for video %s", video.id)
-    except Exception as exc:
-        db.rollback()
-        with SessionLocal() as err_db:
-            v = err_db.get(Video, video.id)
-            if v:
-                v.status = JobStatus.failed
-                v.error_reason = str(exc)[:500]
-                err_db.commit()
-        logger.error("Phase 1 failed for video %s: %s", video.id, exc)
-    finally:
-        unload_qwen_model()
+    _run_pipeline(video, db, JobStatus.phase1_processing, process_phase1, "Phase 1", unload_gpu=True)
 
 
 def _run_phase2(video: Video, db) -> None:
-    video.status = JobStatus.phase2_processing
-    video.error_reason = None
-    db.commit()
-    try:
-        process_phase2(video, db)
-        logger.info("Phase 2 complete for video %s", video.id)
-    except Exception as exc:
-        db.rollback()
-        with SessionLocal() as err_db:
-            v = err_db.get(Video, video.id)
-            if v:
-                v.status = JobStatus.failed
-                v.error_reason = str(exc)[:500]
-                err_db.commit()
-        logger.error("Phase 2 failed for video %s: %s", video.id, exc)
-    finally:
-        unload_qwen_model()
+    _run_pipeline(video, db, JobStatus.phase2_processing, process_phase2, "Phase 2", unload_gpu=True)
 
 
 def run_worker():

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.errors import api_error, get_video_or_404
 from app.models.phase1 import (
     Correction,
     CorrectionEntityType,
@@ -19,17 +20,6 @@ from app.models.video import JobStatus, Video
 router = APIRouter()
 
 
-def _error(msg: str, code: str, trace_id: uuid.UUID | None = None) -> dict:
-    return {"error": msg, "code": code, "trace_id": str(trace_id or uuid.uuid4())}
-
-
-def _get_video_or_404(video_id: uuid.UUID, db: Session) -> Video:
-    video = db.get(Video, video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
-    return video
-
-
 @router.get("/api/videos/{video_id}/phase2/quotes")
 def get_phase2_quotes(
     video_id: uuid.UUID,
@@ -37,19 +27,19 @@ def get_phase2_quotes(
     limit: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
-    video = _get_video_or_404(video_id, db)
+    video = get_video_or_404(video_id, db)
 
     if view not in ("notable", "top"):
         raise HTTPException(
             status_code=400,
-            detail=_error("view must be 'notable' or 'top'", "INVALID_VIEW"),
+            detail=api_error("view must be 'notable' or 'top'", "INVALID_VIEW"),
         )
 
     reviewable = {JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed}
     if video.status not in reviewable:
         raise HTTPException(
             status_code=409,
-            detail=_error("Phase 2 quotes not yet available", "PHASE2_NOT_READY"),
+            detail=api_error("Phase 2 quotes not yet available", "PHASE2_NOT_READY"),
         )
 
     q = select(Quote).where(Quote.video_id == video_id)
@@ -101,24 +91,24 @@ def log_phase2_correction(
     body: Phase2CorrectionRequest,
     db: Session = Depends(get_db),
 ):
-    video = _get_video_or_404(video_id, db)
+    video = get_video_or_404(video_id, db)
 
     if video.status == JobStatus.phase2_reviewed:
         raise HTTPException(
             status_code=409,
-            detail=_error("Phase 2 review already confirmed", "PHASE2_ALREADY_REVIEWED"),
+            detail=api_error("Phase 2 review already confirmed", "PHASE2_ALREADY_REVIEWED"),
         )
 
     if video.status != JobStatus.phase2_ready_for_review:
         raise HTTPException(
             status_code=409,
-            detail=_error("Phase 2 not ready for review", "PHASE2_NOT_READY"),
+            detail=api_error("Phase 2 not ready for review", "PHASE2_NOT_READY"),
         )
 
     if body.entity_type != CorrectionEntityType.quote:
         raise HTTPException(
             status_code=400,
-            detail=_error(
+            detail=api_error(
                 "Phase 2 corrections only accept entity_type 'quote'",
                 "INVALID_ENTITY_TYPE",
             ),
@@ -128,7 +118,7 @@ def log_phase2_correction(
     if not quote or quote.video_id != video_id:
         raise HTTPException(
             status_code=400,
-            detail=_error("entity_id does not belong to this video", "INVALID_ENTITY"),
+            detail=api_error("entity_id does not belong to this video", "INVALID_ENTITY"),
         )
 
     quote.reviewed = True
@@ -153,12 +143,12 @@ def log_phase2_correction(
 
 @router.post("/api/videos/{video_id}/phase2/confirm-review")
 def confirm_phase2_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
-    video = _get_video_or_404(video_id, db)
+    video = get_video_or_404(video_id, db)
 
     if video.status != JobStatus.phase2_ready_for_review:
         raise HTTPException(
             status_code=409,
-            detail=_error("Video not at phase2_ready_for_review", "PHASE2_NOT_READY"),
+            detail=api_error("Video not at phase2_ready_for_review", "PHASE2_NOT_READY"),
         )
 
     video.status = JobStatus.phase2_reviewed

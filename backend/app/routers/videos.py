@@ -1,5 +1,4 @@
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from pydantic import BaseModel
@@ -7,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.errors import api_error, get_video_or_404
 from app.models.phase1 import NarrativeCluster, TranscriptChunk, TranscriptTurn
 from app.models.phase2 import Phase2Chunk, Quote
 from app.models.video import JobStatus, SpeakerRole, SpeakerRoleMap, TranscriptSegment, Video
@@ -19,13 +19,6 @@ from app.services.storage import (
 
 router = APIRouter()
 
-
-def _error(msg: str, code: str, trace_id: uuid.UUID | None = None) -> dict:
-    return {
-        "error": msg,
-        "code": code,
-        "trace_id": str(trace_id or uuid.uuid4()),
-    }
 
 
 @router.get("/health")
@@ -61,9 +54,9 @@ def upload_video(file: UploadFile, db: Session = Depends(get_db)):
     try:
         storage_path, media_type_val, duration = store_upload(file.file, file.filename or "upload")
     except UnsupportedMediaError as exc:
-        raise HTTPException(status_code=400, detail=_error(str(exc), "UNSUPPORTED_MEDIA_TYPE"))
+        raise HTTPException(status_code=400, detail=api_error(str(exc), "UNSUPPORTED_MEDIA_TYPE"))
     except (FileTooLargeError, DurationExceededError) as exc:
-        raise HTTPException(status_code=413, detail=_error(str(exc), "FILE_TOO_LARGE"))
+        raise HTTPException(status_code=413, detail=api_error(str(exc), "FILE_TOO_LARGE"))
 
     video = Video(
         original_filename=file.filename or "upload",
@@ -91,9 +84,7 @@ def upload_video(file: UploadFile, db: Session = Depends(get_db)):
 
 @router.get("/api/videos/{video_id}")
 def get_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
-    video = db.get(Video, video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
+    video = get_video_or_404(video_id, db)
     return {
         "id": str(video.id),
         "status": video.status,
@@ -107,9 +98,7 @@ def get_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.get("/api/videos/{video_id}/transcript")
 def get_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
-    video = db.get(Video, video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
+    video = get_video_or_404(video_id, db)
 
     reviewable = {
         JobStatus.ready_for_review, JobStatus.reviewed,
@@ -121,7 +110,7 @@ def get_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
     if video.status not in reviewable:
         raise HTTPException(
             status_code=409,
-            detail=_error("Transcript not yet available", "TRANSCRIPT_NOT_READY"),
+            detail=api_error("Transcript not yet available", "TRANSCRIPT_NOT_READY"),
         )
 
     segments = (
@@ -166,15 +155,13 @@ def assign_speakers(
     body: SpeakerAssignmentsRequest,
     db: Session = Depends(get_db),
 ):
-    video = db.get(Video, video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
+    video = get_video_or_404(video_id, db)
 
     reviewable = {JobStatus.ready_for_review, JobStatus.reviewed}
     if video.status not in reviewable:
         raise HTTPException(
             status_code=409,
-            detail=_error("Video not ready for review", "NOT_READY_FOR_REVIEW"),
+            detail=api_error("Video not ready for review", "NOT_READY_FOR_REVIEW"),
         )
 
     known_labels = {
@@ -190,7 +177,7 @@ def assign_speakers(
         if assignment.speaker_label not in known_labels:
             raise HTTPException(
                 status_code=400,
-                detail=_error(
+                detail=api_error(
                     f"Unknown speaker_label: {assignment.speaker_label}",
                     "UNKNOWN_SPEAKER_LABEL",
                 ),
@@ -235,14 +222,12 @@ def assign_speakers(
 
 @router.post("/api/videos/{video_id}/confirm-review")
 def confirm_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
-    video = db.get(Video, video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
+    video = get_video_or_404(video_id, db)
 
     if video.status != JobStatus.ready_for_review:
         raise HTTPException(
             status_code=409,
-            detail=_error("Video not ready for review", "NOT_READY_FOR_REVIEW"),
+            detail=api_error("Video not ready for review", "NOT_READY_FOR_REVIEW"),
         )
 
     distinct_labels = {
@@ -264,7 +249,7 @@ def confirm_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
     if distinct_labels - mapped_labels:
         raise HTTPException(
             status_code=409,
-            detail=_error(
+            detail=api_error(
                 "Not all speakers have been assigned a role",
                 "SPEAKERS_UNMAPPED",
             ),
@@ -282,14 +267,12 @@ def confirm_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
 
 @router.post("/api/videos/{video_id}/retry")
 def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
-    video = db.get(Video, video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail=_error("Video not found", "NOT_FOUND"))
+    video = get_video_or_404(video_id, db)
 
     if video.status != JobStatus.failed:
         raise HTTPException(
             status_code=409,
-            detail=_error("Video is not in failed status", "NOT_FAILED"),
+            detail=api_error("Video is not in failed status", "NOT_FAILED"),
         )
 
     has_segments = (
@@ -323,6 +306,56 @@ def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
         db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
         db.execute(delete(Quote).where(Quote.video_id == video_id))
         video.status = JobStatus.phase2_queued
+
+    new_status = video.status
+    video.error_reason = None
+    db.commit()
+
+    return {"video_id": str(video_id), "status": new_status.value}
+
+
+_RERUN_STATUSES = {
+    JobStatus.phase1_ready_for_review,
+    JobStatus.phase1_reviewed,
+    JobStatus.phase2_ready_for_review,
+    JobStatus.phase2_reviewed,
+}
+
+_RERUN_TRANSCRIPT_STATUSES = {
+    JobStatus.ready_for_review,
+    JobStatus.reviewed,
+    JobStatus.phase1_ready_for_review,
+    JobStatus.phase1_reviewed,
+    JobStatus.phase2_ready_for_review,
+    JobStatus.phase2_reviewed,
+}
+
+
+@router.post("/api/videos/{video_id}/rerun")
+def rerun_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
+    video = get_video_or_404(video_id, db)
+
+    if video.status not in _RERUN_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error(
+                f"Rerun not allowed from status '{video.status.value}'",
+                "INVALID_STATUS",
+            ),
+        )
+
+    if video.status in (JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed):
+        db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
+        db.execute(delete(Quote).where(Quote.video_id == video_id))
+        video.status = JobStatus.phase2_queued
+    else:
+        # phase1_ready_for_review or phase1_reviewed — clear phase1 + phase2 data
+        db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video_id))
+        db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video_id))
+        db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video_id))
+        db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video_id))
+        db.execute(delete(Quote).where(Quote.video_id == video_id))
+        video.status = JobStatus.phase1_queued
 
     new_status = video.status
     video.error_reason = None

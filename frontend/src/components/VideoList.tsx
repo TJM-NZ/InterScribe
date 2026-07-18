@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { enqueuePhase1, retryVideo, type VideoStatus, type VideoSummary } from "@/lib/api";
+import { enqueuePhase1, rerunVideo, retryVideo, type VideoStatus, type VideoSummary } from "@/lib/api";
 
 const STATUS_LABELS: Record<VideoStatus, string> = {
   uploaded: "Uploaded",
@@ -73,6 +73,44 @@ function VideoActions({ v, onRefreshVideo }: { v: VideoSummary; onRefreshVideo: 
   }
   if (v.status === "phase2_ready_for_review") {
     return <Link href={`/videos/${v.id}/phase2`} className="text-xs text-violet-600 hover:underline">Review quotes →</Link>;
+  }
+  if (v.status === "phase1_reviewed") {
+    return (
+      <button
+        onClick={async () => {
+          setLoading(true);
+          try {
+            await rerunVideo(v.id);
+            await onRefreshVideo(v.id);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        disabled={loading}
+        className="text-xs text-purple-600 hover:underline disabled:opacity-50"
+      >
+        {loading ? "Re-running…" : "Re-run Phase 1 →"}
+      </button>
+    );
+  }
+  if (v.status === "phase2_reviewed") {
+    return (
+      <button
+        onClick={async () => {
+          setLoading(true);
+          try {
+            await rerunVideo(v.id);
+            await onRefreshVideo(v.id);
+          } finally {
+            setLoading(false);
+          }
+        }}
+        disabled={loading}
+        className="text-xs text-violet-600 hover:underline disabled:opacity-50"
+      >
+        {loading ? "Re-running…" : "Re-run Phase 2 →"}
+      </button>
+    );
   }
   if (v.status === "failed") {
     return (
