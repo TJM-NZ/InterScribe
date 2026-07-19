@@ -2,36 +2,10 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
-
-
-class UUID(TypeDecorator):
-    """UUID that uses native pg UUID in Postgres, String(36) in SQLite."""
-    impl = String(36)
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(PG_UUID(as_uuid=True))
-        return dialect.type_descriptor(String(36))
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return None
-        if dialect.name == "postgresql":
-            return value
-        return str(value)
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        if isinstance(value, uuid.UUID):
-            return value
-        return uuid.UUID(value)
+from app.database import Base, UUID
 
 
 class MediaType(str, PyEnum):
@@ -85,7 +59,6 @@ class Video(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     original_filename: Mapped[str] = mapped_column(String, nullable=False)
     storage_path: Mapped[str] = mapped_column(String, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(String, nullable=False)

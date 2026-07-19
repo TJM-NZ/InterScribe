@@ -7,8 +7,7 @@ from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
-from app.models.video import UUID
+from app.database import Base, UUID
 
 
 class CorrectionStage(str, PyEnum):

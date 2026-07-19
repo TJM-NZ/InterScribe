@@ -1,5 +1,3 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,12 +6,7 @@ from app.routers import phase1
 from app.routers import phase2
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-
-
-app = FastAPI(title="InterScribe", lifespan=lifespan)
+app = FastAPI(title="InterScribe")
 
 app.add_middleware(
     CORSMiddleware,

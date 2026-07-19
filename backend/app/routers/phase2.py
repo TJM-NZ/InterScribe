@@ -22,7 +22,7 @@ router = APIRouter()
 @router.get("/api/videos/{video_id}/phase2/quotes")
 def get_phase2_quotes(
     video_id: uuid.UUID,
-    view: str | None = Query(None),
+    view: str = Query(...),
     limit: int | None = Query(None),
     db: Session = Depends(get_db),
 ):

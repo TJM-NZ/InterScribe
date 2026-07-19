@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import api_error, get_video_or_404
 from app.models.phase1 import (
-    ChunkNarrative,
     Correction,
     CorrectionEntityType,
     CorrectionStage,
@@ -50,15 +49,6 @@ def get_phase1_narrative(video_id: uuid.UUID, db: Session = Depends(get_db)):
         .scalars()
         .all()
     )
-
-    narratives = (
-        db.execute(
-            select(ChunkNarrative).where(ChunkNarrative.video_id == video_id)
-        )
-        .scalars()
-        .all()
-    )
-    narrative_map = {str(n.chunk_id): n for n in narratives}
 
     return {
         "clusters": [

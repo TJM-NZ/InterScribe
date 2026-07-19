@@ -4,8 +4,7 @@ from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
-from app.models.video import UUID
+from app.database import Base, UUID
 
 
 class Phase2Chunk(Base):

@@ -1,19 +1,18 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import api_error, get_video_or_404
+from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest
 from app.models.phase1 import NarrativeCluster, TranscriptChunk, TranscriptTurn
 from app.models.phase2 import Phase2Chunk, Quote
 from app.models.video import (
     JobStatus,
     SPEAKER_REVIEW_STATUSES,
     TRANSCRIPT_VIEWABLE_STATUSES,
-    SpeakerRole,
     SpeakerRoleMap,
     TranscriptSegment,
     Video,
@@ -26,7 +25,6 @@ from app.services.storage import (
 )
 
 router = APIRouter()
-
 
 
 @router.get("/health")
@@ -74,8 +72,7 @@ def upload_video(file: UploadFile, db: Session = Depends(get_db)):
         status=JobStatus.uploaded,
     )
     db.add(video)
-    db.commit()
-    db.refresh(video)
+    db.flush()
 
     response = {
         "id": str(video.id),
@@ -139,15 +136,6 @@ def get_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
             for s in segments
         ]
     }
-
-
-class SpeakerAssignment(BaseModel):
-    speaker_label: str
-    role: SpeakerRole
-
-
-class SpeakerAssignmentsRequest(BaseModel):
-    assignments: list[SpeakerAssignment]
 
 
 @router.patch("/api/videos/{video_id}/speakers")
