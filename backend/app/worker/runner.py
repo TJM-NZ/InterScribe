@@ -37,30 +37,10 @@ def _recover_stuck_jobs(db) -> None:
     db.commit()
 
 
-def _pick_next_transcription(db) -> Video | None:
+def _pick_next(db, status: JobStatus) -> Video | None:
     return db.execute(
         select(Video)
-        .where(Video.status == JobStatus.queued)
-        .order_by(Video.uploaded_at.asc())
-        .limit(1)
-        .with_for_update(skip_locked=True)
-    ).scalar_one_or_none()
-
-
-def _pick_next_phase1(db) -> Video | None:
-    return db.execute(
-        select(Video)
-        .where(Video.status == JobStatus.phase1_queued)
-        .order_by(Video.uploaded_at.asc())
-        .limit(1)
-        .with_for_update(skip_locked=True)
-    ).scalar_one_or_none()
-
-
-def _pick_next_phase2(db) -> Video | None:
-    return db.execute(
-        select(Video)
-        .where(Video.status == JobStatus.phase2_queued)
+        .where(Video.status == status)
         .order_by(Video.uploaded_at.asc())
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -96,40 +76,28 @@ def _run_pipeline(
             unload_qwen_model()
 
 
-def _run_transcription(video: Video, db) -> None:
-    _run_pipeline(video, db, JobStatus.transcribing, transcribe_video, "Transcription")
-
-
-def _run_phase1(video: Video, db) -> None:
-    _run_pipeline(video, db, JobStatus.phase1_processing, process_phase1, "Phase 1", unload_gpu=True)
-
-
-def _run_phase2(video: Video, db) -> None:
-    _run_pipeline(video, db, JobStatus.phase2_processing, process_phase2, "Phase 2", unload_gpu=True)
-
-
 def run_worker():
     logger.info("Worker started")
     with SessionLocal() as db:
         _recover_stuck_jobs(db)
     while True:
         with SessionLocal() as db:
-            video = _pick_next_transcription(db)
+            video = _pick_next(db, JobStatus.queued)
             if video is not None:
                 logger.info("Transcribing video %s (%s)", video.id, video.original_filename)
-                _run_transcription(video, db)
+                _run_pipeline(video, db, JobStatus.transcribing, transcribe_video, "Transcription")
                 continue
 
-            video = _pick_next_phase1(db)
+            video = _pick_next(db, JobStatus.phase1_queued)
             if video is not None:
                 logger.info("Phase 1 processing video %s (%s)", video.id, video.original_filename)
-                _run_phase1(video, db)
+                _run_pipeline(video, db, JobStatus.phase1_processing, process_phase1, "Phase 1", unload_gpu=True)
                 continue
 
-            video = _pick_next_phase2(db)
+            video = _pick_next(db, JobStatus.phase2_queued)
             if video is not None:
                 logger.info("Phase 2 processing video %s (%s)", video.id, video.original_filename)
-                _run_phase2(video, db)
+                _run_pipeline(video, db, JobStatus.phase2_processing, process_phase2, "Phase 2", unload_gpu=True)
                 continue
 
         time.sleep(POLL_INTERVAL)

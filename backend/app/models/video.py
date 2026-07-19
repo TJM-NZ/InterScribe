@@ -18,7 +18,6 @@ class JobStatus(str, PyEnum):
     queued = "queued"
     transcribing = "transcribing"
     ready_for_review = "ready_for_review"
-    reviewed = "reviewed"
     phase1_queued = "phase1_queued"
     phase1_processing = "phase1_processing"
     phase1_ready_for_review = "phase1_ready_for_review"
@@ -32,13 +31,13 @@ class JobStatus(str, PyEnum):
 
 # Named status sets — state-machine semantics shared across routers
 TRANSCRIPT_VIEWABLE_STATUSES = frozenset({
-    JobStatus.ready_for_review, JobStatus.reviewed,
+    JobStatus.ready_for_review,
     JobStatus.phase1_queued, JobStatus.phase1_processing,
     JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
     JobStatus.phase2_queued, JobStatus.phase2_processing,
     JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
 })
-SPEAKER_REVIEW_STATUSES = frozenset({JobStatus.ready_for_review, JobStatus.reviewed})
+SPEAKER_REVIEW_STATUSES = frozenset({JobStatus.ready_for_review})
 PHASE1_VIEWABLE_STATUSES = frozenset({
     JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
     JobStatus.phase2_queued, JobStatus.phase2_processing,

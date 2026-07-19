@@ -94,11 +94,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
         <button
           onClick={handleConfirm}
-          disabled={confirming || !allMapped || video.status === "reviewed"}
+          disabled={confirming || !allMapped || video.status !== "ready_for_review"}
           className="px-5 py-2 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700 disabled:opacity-40"
           data-testid="confirm-review-button"
         >
-          {video.status === "reviewed"
+          {video.status !== "ready_for_review"
             ? "Review complete"
             : confirming
             ? "Confirming…"

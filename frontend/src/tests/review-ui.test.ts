@@ -74,11 +74,11 @@ describe("confirmReview", () => {
   it("posts and returns reviewed status", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ video_id: "v1", status: "reviewed" }),
+      json: async () => ({ video_id: "v1", status: "phase1_queued" }),
     });
 
     const result = await confirmReview("v1");
-    expect(result.status).toBe("reviewed");
+    expect(result.status).toBe("phase1_queued");
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining("/api/videos/v1/confirm-review"),
       expect.objectContaining({ method: "POST" })

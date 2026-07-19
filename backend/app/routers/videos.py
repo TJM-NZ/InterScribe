@@ -312,7 +312,6 @@ _RERUN_STATUSES = {
 
 _RERUN_TRANSCRIPT_STATUSES = {
     JobStatus.ready_for_review,
-    JobStatus.reviewed,
     JobStatus.phase1_ready_for_review,
     JobStatus.phase1_reviewed,
     JobStatus.phase2_ready_for_review,

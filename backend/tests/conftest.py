@@ -116,7 +116,7 @@ def seed_video_with_segments(db, speakers=None, status=None):
     from datetime import datetime, timezone
     from app.models.video import JobStatus, MediaType, SpeakerRoleMap, TranscriptSegment, Video
 
-    _status = status or JobStatus.reviewed
+    _status = status or JobStatus.ready_for_review
     video = Video(
         original_filename="interview.wav",
         storage_path="/fake/path/interview.wav",

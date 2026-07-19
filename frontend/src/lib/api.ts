@@ -5,7 +5,6 @@ export type VideoStatus =
   | "queued"
   | "transcribing"
   | "ready_for_review"
-  | "reviewed"
   | "phase1_queued"
   | "phase1_processing"
   | "phase1_ready_for_review"
@@ -163,12 +162,6 @@ export async function logCorrection(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await res.json();
-  return res.json();
-}
-
-export async function enqueuePhase1(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/enqueue`, { method: "POST" });
   if (!res.ok) throw await res.json();
   return res.json();
 }

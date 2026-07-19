@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { enqueuePhase1, rerunTranscript, rerunVideo, retryVideo, type VideoStatus, type VideoSummary } from "@/lib/api";
+import { rerunTranscript, rerunVideo, retryVideo, type VideoStatus, type VideoSummary } from "@/lib/api";
 
 const STATUS_LABELS: Record<VideoStatus, string> = {
   uploaded: "Uploaded",
   queued: "Queued",
   transcribing: "Transcribing…",
   ready_for_review: "Ready for review",
-  reviewed: "Reviewed",
   phase1_queued: "Analysis queued",
   phase1_processing: "Analysing…",
   phase1_ready_for_review: "Ready for Phase 1 review",
@@ -26,7 +25,6 @@ const STATUS_COLORS: Record<VideoStatus, string> = {
   queued: "bg-yellow-100 text-yellow-700",
   transcribing: "bg-blue-100 text-blue-700",
   ready_for_review: "bg-green-100 text-green-700",
-  reviewed: "bg-emerald-100 text-emerald-700",
   phase1_queued: "bg-yellow-100 text-yellow-700",
   phase1_processing: "bg-blue-100 text-blue-700",
   phase1_ready_for_review: "bg-purple-100 text-purple-700",
@@ -57,7 +55,6 @@ function getDetailPath(videoId: string, status: VideoStatus): string | null {
   }
   if (
     status === "ready_for_review" ||
-    status === "reviewed" ||
     status === "phase1_queued" ||
     status === "phase1_processing"
   ) {
@@ -99,13 +96,6 @@ function VideoActionsDropdown({
 
   if (v.status === "ready_for_review") {
     actions.push({ label: "Review transcript", href: `/videos/${v.id}`, style: "primary" });
-  } else if (v.status === "reviewed") {
-    actions.push({
-      label: "Start analysis",
-      onClick: async () => { await enqueuePhase1(v.id); await onRefreshVideo(v.id); },
-      style: "primary",
-    });
-    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
   } else if (v.status === "phase1_queued" || v.status === "phase1_processing") {
     actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
   } else if (v.status === "phase1_ready_for_review") {
@@ -144,7 +134,7 @@ function VideoActionsDropdown({
   }
 
   const postTranscriptStatuses: VideoStatus[] = [
-    "ready_for_review", "reviewed",
+    "ready_for_review",
     "phase1_ready_for_review", "phase1_reviewed",
     "phase2_ready_for_review", "phase2_reviewed",
   ];

@@ -127,7 +127,7 @@ def test_confirm_review_succeeds_when_all_mapped(client, db):
     resp = client.post(f"/api/videos/{video.id}/confirm-review")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["status"] == "reviewed"
+    assert data["status"] == "phase1_queued"
 
 
 def test_speaker_role_can_be_updated(client, db):

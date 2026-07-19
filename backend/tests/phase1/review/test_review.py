@@ -288,7 +288,7 @@ def test_phase1_auto_enqueued_after_spec1_confirm_review(client, db):
     resp = client.post(f"/api/videos/{v.id}/confirm-review")
 
     assert resp.status_code == 200
-    assert resp.json()["status"] == "reviewed"
+    assert resp.json()["status"] == "phase1_queued"
 
     db.expire(v)
     db.refresh(v)
