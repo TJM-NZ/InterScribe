@@ -145,6 +145,21 @@ def run_worker():
                     logger.info(
                         "No headline quotes for video %s — skipping condensation", video.id
                     )
+                    now = datetime.now(timezone.utc)
+                    max_run = db.execute(
+                        select(func.max(ProcessingRun.run_number))
+                        .where(ProcessingRun.video_id == video.id)
+                        .where(ProcessingRun.phase == ProcessingPhase.condensation)
+                    ).scalar() or 0
+                    db.add(ProcessingRun(
+                        video_id=video.id,
+                        phase=ProcessingPhase.condensation,
+                        run_number=max_run + 1,
+                        started_at=now,
+                        completed_at=now,
+                        wall_seconds=0.0,
+                        succeeded=True,
+                    ))
                     video.status = JobStatus.condensation_reviewed
                     db.commit()
                 else:

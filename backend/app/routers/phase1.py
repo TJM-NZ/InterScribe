@@ -84,6 +84,9 @@ def log_correction(
 ):
     video = get_video_or_404(video_id, db)
 
+    # Two-step check: give the frontend a distinct code when the user double-submits
+    # a correction after already confirming review (PHASE1_ALREADY_REVIEWED), vs
+    # when the video simply isn't at the right stage yet (PHASE1_NOT_READY).
     if video.status == JobStatus.phase1_reviewed:
         raise HTTPException(
             status_code=409,

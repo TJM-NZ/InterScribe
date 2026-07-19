@@ -29,16 +29,16 @@ def get_phase2_quotes(
 ):
     video = get_video_or_404(video_id, db)
 
-    if view not in ("notable", "top"):
-        raise HTTPException(
-            status_code=400,
-            detail=api_error("view must be 'notable' or 'top'", "INVALID_VIEW"),
-        )
-
     if video.status not in PHASE2_VIEWABLE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=api_error("Phase 2 quotes not yet available", "PHASE2_NOT_READY"),
+        )
+
+    if view not in ("notable", "top"):
+        raise HTTPException(
+            status_code=400,
+            detail=api_error("view must be 'notable' or 'top'", "INVALID_VIEW"),
         )
 
     q = select(Quote).where(Quote.video_id == video_id)

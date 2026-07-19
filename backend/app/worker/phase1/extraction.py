@@ -45,7 +45,11 @@ TRANSCRIPT CHUNK:
 
 
 def _pull_model_if_needed() -> None:
-    """Ensure the Qwen model is available in Ollama, pulling it if not."""
+    """Try to ensure the Qwen model is available in Ollama, pulling it if not present.
+
+    Does not raise on failure — the first actual Qwen call will fail with a clear
+    error if the model is still unavailable after this attempt.
+    """
     try:
         resp = httpx.get(f"{settings.ollama_base_url}/api/tags", timeout=10)
         if resp.status_code == 200:
@@ -53,11 +57,12 @@ def _pull_model_if_needed() -> None:
             if any(settings.qwen_model in n for n in names):
                 return
         logger.info("Pulling model %s from Ollama…", settings.qwen_model)
-        httpx.post(
+        pull_resp = httpx.post(
             f"{settings.ollama_base_url}/api/pull",
             json={"name": settings.qwen_model},
             timeout=3600,
         )
+        pull_resp.raise_for_status()
     except Exception as exc:
         logger.warning("Could not verify/pull Ollama model: %s", exc)
 
