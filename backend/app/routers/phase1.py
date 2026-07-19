@@ -174,4 +174,4 @@ def confirm_phase1_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
     video.status = JobStatus.phase2_queued
     db.commit()
 
-    return {"video_id": str(video_id), "status": "phase2_queued"}
+    return {"video_id": str(video_id), "status": "phase1_reviewed"}

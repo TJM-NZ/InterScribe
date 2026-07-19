@@ -222,12 +222,7 @@ def test_low_text_sim_produces_separate_quotes(db):
     db.commit()
 
     quotes = db.query(Quote).filter_by(video_id=v2.id).all()
-    # Text similarity check: if merged → 1 quote; if not → 2 quotes
-    # The texts are different enough; assert at least that no text-sim-only merge happened
-    # (the exact result depends on SequenceMatcher ratio — we just verify correctness)
-    for q in quotes:
-        # Each quote's source_candidate_ids should contain at least one candidate
-        assert len(q.source_candidate_ids) >= 1
+    assert len(quotes) == 2
 
 
 def test_non_overlapping_ranges_produce_separate_quotes(db):

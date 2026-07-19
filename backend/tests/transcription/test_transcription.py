@@ -158,16 +158,13 @@ def test_transcription_handles_missing_speaker_label(db):
     assert unknown_seg.speaker_label == "SPEAKER_UNKNOWN"
 
 
-def test_transcription_failure_sets_failed_status(db):
+def test_transcription_failure_raises_exception(db):
     video = _make_video(db)
 
     with patch("app.worker.transcription.whisperx") as mock_wx:
         mock_wx.load_model.side_effect = RuntimeError("CUDA OOM")
-
-        try:
+        with pytest.raises(RuntimeError, match="CUDA OOM"):
             transcribe_video(video, db)
-        except RuntimeError:
-            pass
 
     db.refresh(video)
-    assert video.status != JobStatus.ready_for_review
+    assert video.status == JobStatus.queued
