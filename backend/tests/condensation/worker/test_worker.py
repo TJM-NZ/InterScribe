@@ -1,63 +1,15 @@
 """Gate 1 — condensation worker: headline text stored, status transitions (SPEC-004)."""
-import uuid
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.phase1 import NarrativeCluster
 from app.models.phase2 import Quote
-from app.models.video import JobStatus, MediaType, Video
+from app.models.video import JobStatus
+from sqlalchemy import func, select as sa_select
+from tests.conftest import make_video
+from tests.phase1.conftest import make_cluster
+from tests.phase2.conftest import make_quote
 from app.worker.condensation.pipeline import _truncate_to_20_words, process_condensation
-
-
-def _make_video(db, status=JobStatus.condensation_queued):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=status,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
-def _make_quote(
-    db,
-    video_id,
-    quote_type="headline",
-    text="The future of AI is transforming every industry.",
-):
-    q = Quote(
-        video_id=video_id,
-        start_segment_id=0,
-        end_segment_id=2,
-        start_ts=0.0,
-        end_ts=3.0,
-        quote_text=text,
-        speaker_label="SPEAKER_01",
-        quote_type=quote_type,
-        narrative_alignment_score=0.8,
-        is_notable_moment=False,
-        source_candidate_ids=[str(uuid.uuid4())],
-    )
-    db.add(q)
-    db.flush()
-    return q
-
-
-def _make_cluster(db, video_id):
-    c = NarrativeCluster(
-        video_id=video_id,
-        representative_label="AI and the future",
-        cluster_size=3,
-        rank=1,
-    )
-    db.add(c)
-    db.flush()
-    return c
 
 
 def _mock_response(text: str):
@@ -90,9 +42,9 @@ def test_truncate_to_20_words_long_truncated():
 
 
 def test_headline_text_set_on_headline_quote(db):
-    v = _make_video(db)
-    q = _make_quote(db, v.id, quote_type="headline")
-    _make_cluster(db, v.id)
+    v = make_video(db, status=JobStatus.condensation_queued)
+    q = make_quote(db, v.id, quote_type="headline", text="The future of AI is transforming every industry.")
+    make_cluster(db, v.id)
     db.commit()
 
     with patch("httpx.post", return_value=_mock_response("AI transforms every industry now.")):
@@ -104,8 +56,8 @@ def test_headline_text_set_on_headline_quote(db):
 
 
 def test_substantive_quote_headline_text_stays_null(db):
-    v = _make_video(db)
-    q = _make_quote(db, v.id, quote_type="substantive")
+    v = make_video(db, status=JobStatus.condensation_queued)
+    q = make_quote(db, v.id, quote_type="substantive", text="The future of AI is transforming every industry.")
     db.commit()
 
     with patch("httpx.post", return_value=_mock_response("should not be set")):
@@ -117,8 +69,8 @@ def test_substantive_quote_headline_text_stays_null(db):
 
 
 def test_headline_text_truncated_when_qwen_overshoots(db):
-    v = _make_video(db)
-    q = _make_quote(db, v.id, quote_type="headline")
+    v = make_video(db, status=JobStatus.condensation_queued)
+    q = make_quote(db, v.id, quote_type="headline", text="The future of AI is transforming every industry.")
     db.commit()
 
     long_output = " ".join(f"word{i}" for i in range(24))
@@ -131,8 +83,8 @@ def test_headline_text_truncated_when_qwen_overshoots(db):
 
 
 def test_truncation_preserves_quote_row_not_discarded(db):
-    v = _make_video(db)
-    q = _make_quote(db, v.id, quote_type="headline")
+    v = make_video(db, status=JobStatus.condensation_queued)
+    q = make_quote(db, v.id, quote_type="headline", text="The future of AI is transforming every industry.")
     db.commit()
 
     long_output = " ".join(f"word{i}" for i in range(30))
@@ -146,8 +98,8 @@ def test_truncation_preserves_quote_row_not_discarded(db):
 
 
 def test_status_transitions_to_condensation_ready_for_review(db):
-    v = _make_video(db)
-    _make_quote(db, v.id, quote_type="headline")
+    v = make_video(db, status=JobStatus.condensation_queued)
+    make_quote(db, v.id, quote_type="headline", text="The future of AI is transforming every industry.")
     db.commit()
 
     with patch("httpx.post", return_value=_mock_response("Short condensed headline.")):
@@ -159,8 +111,8 @@ def test_status_transitions_to_condensation_ready_for_review(db):
 
 
 def test_think_tags_stripped_from_output(db):
-    v = _make_video(db)
-    q = _make_quote(db, v.id, quote_type="headline")
+    v = make_video(db, status=JobStatus.condensation_queued)
+    q = make_quote(db, v.id, quote_type="headline", text="The future of AI is transforming every industry.")
     db.commit()
 
     qwen_output = "<think>Let me condense this carefully.</think>AI is transforming society."
@@ -174,9 +126,9 @@ def test_think_tags_stripped_from_output(db):
 
 
 def test_multiple_headline_quotes_all_condensed(db):
-    v = _make_video(db)
-    q1 = _make_quote(db, v.id, quote_type="headline", text="First headline quote.")
-    q2 = _make_quote(db, v.id, quote_type="headline", text="Second headline quote.")
+    v = make_video(db, status=JobStatus.condensation_queued)
+    q1 = make_quote(db, v.id, quote_type="headline", text="First headline quote.")
+    q2 = make_quote(db, v.id, quote_type="headline", text="Second headline quote.")
     db.commit()
 
     responses = iter([
@@ -196,10 +148,8 @@ def test_multiple_headline_quotes_all_condensed(db):
 
 def test_zero_headline_skip_transitions_to_condensation_reviewed(db):
     """Runner zero-headline check: video with only substantive quotes skips condensation."""
-    from sqlalchemy import func, select as sa_select
-
-    v = _make_video(db)
-    _make_quote(db, v.id, quote_type="substantive")
+    v = make_video(db, status=JobStatus.condensation_queued)
+    make_quote(db, v.id, quote_type="substantive", text="Substantive quote text.")
     db.commit()
 
     # Simulate runner's zero-headline check (same logic as runner.py)

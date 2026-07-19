@@ -1,20 +1,16 @@
 """Gate 1 — Phase 2 quote candidate extraction (QUOTE_GROUNDING anchor)."""
 import json
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from app.models.phase1 import (
-    ChunkTheme,
-    NarrativeCluster,
-    NotableMoment,
-    TranscriptChunk,
-    TranscriptTurn,
-)
-from app.models.phase2 import Phase2Chunk, QuoteCandidate
-from app.models.video import JobStatus, MediaType, SpeakerRoleMap, TranscriptSegment, Video
+from app.models.phase1 import NotableMoment, TranscriptChunk
+from app.models.phase2 import QuoteCandidate
+from app.models.video import JobStatus
+from tests.conftest import make_video, make_segment
+from tests.phase1.conftest import make_turn, make_chunk
+from tests.phase2.conftest import make_phase2_chunk
 from app.worker.phase2.extraction import (
     _compute_narrative_score,
     _find_notable_moment,
@@ -24,78 +20,14 @@ from app.worker.phase2.extraction import (
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Helpers
 # ---------------------------------------------------------------------------
 
-def _make_video(db):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=JobStatus.phase2_processing,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
 def _make_segments(db, video_id, count=10, speaker="SPEAKER_01"):
-    segs = []
-    for i in range(count):
-        s = TranscriptSegment(
-            video_id=video_id,
-            segment_id=i,
-            start_ts=float(i),
-            end_ts=float(i + 1),
-            text=f"Word{i} of the interview answer.",
-            speaker_label=speaker,
-            confidence=0.9,
-        )
-        db.add(s)
-        segs.append(s)
-    db.flush()
-    return segs
-
-
-def _make_phase2_chunk(db, video_id, start_seg=0, end_seg=9):
-    c = Phase2Chunk(
-        video_id=video_id,
-        chunk_index=0,
-        start_segment_id=start_seg,
-        end_segment_id=end_seg,
-        token_count=500,
-    )
-    db.add(c)
-    db.flush()
-    return c
-
-
-def _make_turn(db, video_id, turn_index=0, start_seg=0, end_seg=9, speaker="SPEAKER_01"):
-    t = TranscriptTurn(
-        video_id=video_id,
-        turn_index=turn_index,
-        speaker_label=speaker,
-        start_segment_id=start_seg,
-        end_segment_id=end_seg,
-        combined_text="Combined turn text.",
-        token_count=100,
-    )
-    db.add(t)
-    db.flush()
-    return t
-
-
-def _make_cluster(db, video_id, rank=1):
-    c = NarrativeCluster(
-        video_id=video_id,
-        representative_label="AI research: ml, data",
-        cluster_size=3,
-        rank=rank,
-    )
-    db.add(c)
-    db.flush()
-    return c
+    return [
+        make_segment(db, video_id, i, speaker=speaker, text=f"Word{i} of the interview answer.")
+        for i in range(count)
+    ]
 
 
 def _mock_qwen(candidates: list[dict]):
@@ -172,10 +104,10 @@ def test_find_notable_moment_no_overlap():
 # ---------------------------------------------------------------------------
 
 def test_extract_creates_candidate_rows(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -193,10 +125,10 @@ def test_extract_creates_candidate_rows(db):
 
 
 def test_candidates_have_correct_segment_ids(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -213,10 +145,10 @@ def test_candidates_have_correct_segment_ids(db):
 
 
 def test_narrative_alignment_score_is_float_in_range(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -233,19 +165,12 @@ def test_narrative_alignment_score_is_float_in_range(db):
 
 
 def test_is_notable_moment_set_on_overlap(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
 
-    # Add a phase1 chunk for the NotableMoment FK
-    p1_chunk = TranscriptChunk(
-        video_id=v.id, chunk_index=0, start_segment_id=0,
-        end_segment_id=9, token_count=500,
-    )
-    db.add(p1_chunk)
-    db.flush()
-
+    p1_chunk = make_chunk(db, v.id)
     moment = NotableMoment(
         chunk_id=p1_chunk.id,
         video_id=v.id,
@@ -271,10 +196,10 @@ def test_is_notable_moment_set_on_overlap(db):
 
 
 def test_is_notable_moment_false_when_no_overlap(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -289,10 +214,10 @@ def test_is_notable_moment_false_when_no_overlap(db):
 
 
 def test_out_of_bounds_candidates_dropped(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id, start_seg=0, end_seg=9)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -307,10 +232,10 @@ def test_out_of_bounds_candidates_dropped(db):
 
 
 def test_raw_qwen_output_stored_on_candidate(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -327,10 +252,10 @@ def test_raw_qwen_output_stored_on_candidate(db):
 
 
 def test_empty_qwen_response_creates_no_candidates(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -344,10 +269,10 @@ def test_empty_qwen_response_creates_no_candidates(db):
 
 
 def test_retry_on_qwen_failure(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -371,10 +296,10 @@ def test_retry_on_qwen_failure(db):
 
 
 def test_all_retries_exhausted_raises(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -420,10 +345,10 @@ def test_validate_candidates_invalid_type_defaults_substantive():
 
 
 def test_quote_type_stored_on_candidate(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
@@ -443,14 +368,13 @@ def test_quote_type_stored_on_candidate(db):
 
 
 def test_quote_type_missing_from_qwen_defaults_substantive_on_candidate(db):
-    v = _make_video(db)
+    v = make_video(db)
     segs = _make_segments(db, v.id)
-    chunk = _make_phase2_chunk(db, v.id)
-    turn = _make_turn(db, v.id)
+    chunk = make_phase2_chunk(db, v.id)
+    turn = make_turn(db, v.id, 0, 0, 9, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {s.segment_id: s for s in segs}
-    # No "type" key in raw Qwen output
     no_type_candidates = [{"start_segment_id": 2, "end_segment_id": 5}]
 
     with patch("app.worker.phase2.extraction.httpx.post", return_value=_mock_qwen(no_type_candidates)):
@@ -464,19 +388,11 @@ def test_quote_type_missing_from_qwen_defaults_substantive_on_candidate(db):
 
 
 def test_speaker_label_taken_from_first_segment(db):
-    v = _make_video(db)
-    # Two segments with different speakers
-    s0 = TranscriptSegment(
-        video_id=v.id, segment_id=0, start_ts=0.0, end_ts=1.0,
-        text="Hello", speaker_label="SPEAKER_00", confidence=0.9,
-    )
-    s1 = TranscriptSegment(
-        video_id=v.id, segment_id=1, start_ts=1.0, end_ts=2.0,
-        text="World", speaker_label="SPEAKER_01", confidence=0.9,
-    )
-    db.add_all([s0, s1])
-    chunk = _make_phase2_chunk(db, v.id, start_seg=0, end_seg=1)
-    turn = _make_turn(db, v.id, start_seg=0, end_seg=1)
+    v = make_video(db)
+    s0 = make_segment(db, v.id, 0, speaker="SPEAKER_00", text="Hello")
+    s1 = make_segment(db, v.id, 1, speaker="SPEAKER_01", text="World")
+    chunk = make_phase2_chunk(db, v.id, start_seg=0, end_seg=1)
+    turn = make_turn(db, v.id, 0, 0, 1, speaker="SPEAKER_01")
     db.commit()
 
     segments_by_id = {0: s0, 1: s1}

@@ -1,74 +1,21 @@
 """Gate 2 — condensation review API endpoints (SPEC-004)."""
 import uuid
-from datetime import datetime, timezone
 
-import pytest
-
-from app.models.phase2 import Phase2Chunk, Quote
-from app.models.video import JobStatus, MediaType, Video
-
-
-def _make_video(db, status=JobStatus.condensation_ready_for_review):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=status,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
-def _make_phase2_chunk(db, video_id):
-    c = Phase2Chunk(
-        video_id=video_id,
-        chunk_index=0,
-        start_segment_id=0,
-        end_segment_id=9,
-        token_count=500,
-    )
-    db.add(c)
-    db.flush()
-    return c
-
-
-def _make_quote(
-    db,
-    video_id,
-    chunk_id,
-    quote_type="headline",
-    headline_text="AI scales beyond expectations.",
-    score=0.8,
-):
-    q = Quote(
-        video_id=video_id,
-        start_segment_id=0,
-        end_segment_id=2,
-        start_ts=0.0,
-        end_ts=3.0,
-        quote_text="The actual verbatim quote text from the speaker.",
-        speaker_label="SPEAKER_01",
-        quote_type=quote_type,
-        headline_text=headline_text,
-        narrative_alignment_score=score,
-        is_notable_moment=False,
-        source_candidate_ids=[str(uuid.uuid4())],
-    )
-    db.add(q)
-    db.flush()
-    return q
+from app.models.phase1 import Correction, CorrectionEntityType
+from app.models.video import JobStatus
+from sqlalchemy import select
+from tests.conftest import make_video
+from tests.phase2.conftest import make_phase2_chunk, make_quote
 
 
 # --- GET /condensation/headlines ---
 
 
 def test_get_headlines_returns_only_headline_quotes(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, quote_type="headline", score=0.9)
-    _make_quote(db, v.id, chunk.id, quote_type="substantive", headline_text=None, score=0.7)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, quote_type="headline", score=0.9, headline_text="AI scales beyond expectations.")
+    make_quote(db, v.id, quote_type="substantive", score=0.7)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/condensation/headlines")
@@ -80,10 +27,10 @@ def test_get_headlines_returns_only_headline_quotes(client, db):
 
 
 def test_get_headlines_ordered_by_score_desc(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, quote_type="headline", score=0.5)
-    _make_quote(db, v.id, chunk.id, quote_type="headline", score=0.9)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, quote_type="headline", score=0.5, headline_text="First.")
+    make_quote(db, v.id, quote_type="headline", score=0.9, headline_text="Second.")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/condensation/headlines")
@@ -94,9 +41,9 @@ def test_get_headlines_ordered_by_score_desc(client, db):
 
 
 def test_get_headlines_includes_headline_text_field(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, headline_text="AI scales beyond all expectations.")
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, quote_type="headline", headline_text="AI scales beyond all expectations.")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/condensation/headlines")
@@ -109,7 +56,7 @@ def test_get_headlines_includes_headline_text_field(client, db):
 
 
 def test_get_headlines_status_not_ready_returns_409(client, db):
-    v = _make_video(db, status=JobStatus.condensation_processing)
+    v = make_video(db, status=JobStatus.condensation_processing)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/condensation/headlines")
@@ -119,9 +66,9 @@ def test_get_headlines_status_not_ready_returns_409(client, db):
 
 
 def test_get_headlines_available_after_condensation_reviewed(client, db):
-    v = _make_video(db, status=JobStatus.condensation_reviewed)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_reviewed)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, quote_type="headline", headline_text="Reviewed headline.")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/condensation/headlines")
@@ -139,9 +86,9 @@ def test_get_headlines_unknown_video_returns_404(client):
 
 
 def test_headline_edit_correction_updates_headline_text(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id, headline_text="Original headline.")
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Original headline.")
     db.commit()
 
     resp = client.post(
@@ -166,9 +113,9 @@ def test_headline_edit_correction_updates_headline_text(client, db):
 
 
 def test_quote_type_downgrade_clears_headline_text(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id, quote_type="headline", headline_text="Some headline.")
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Some headline.")
     db.commit()
 
     resp = client.post(
@@ -193,11 +140,9 @@ def test_quote_type_downgrade_clears_headline_text(client, db):
 
 
 def test_correction_creates_correction_row(client, db):
-    from app.models.phase1 import Correction, CorrectionEntityType
-
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Old headline.")
     db.commit()
 
     client.post(
@@ -213,7 +158,6 @@ def test_correction_creates_correction_row(client, db):
         },
     )
 
-    from sqlalchemy import select
     corrections = db.execute(
         select(Correction).where(Correction.video_id == v.id)
     ).scalars().all()
@@ -223,9 +167,9 @@ def test_correction_creates_correction_row(client, db):
 
 
 def test_correction_blocked_wrong_entity_type(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Headline.")
     db.commit()
 
     resp = client.post(
@@ -245,9 +189,9 @@ def test_correction_blocked_wrong_entity_type(client, db):
 
 
 def test_correction_blocked_when_entity_not_headline(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id, quote_type="substantive", headline_text=None)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="substantive")
     db.commit()
 
     resp = client.post(
@@ -267,10 +211,10 @@ def test_correction_blocked_when_entity_not_headline(client, db):
 
 
 def test_correction_blocked_when_entity_not_from_video(client, db):
-    v = _make_video(db)
-    other_v = _make_video(db)
-    chunk = _make_phase2_chunk(db, other_v.id)
-    q = _make_quote(db, other_v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    other_v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, other_v.id)
+    q = make_quote(db, other_v.id, quote_type="headline", headline_text="Headline.")
     db.commit()
 
     resp = client.post(
@@ -290,9 +234,9 @@ def test_correction_blocked_when_entity_not_from_video(client, db):
 
 
 def test_correction_blocked_after_condensation_reviewed(client, db):
-    v = _make_video(db, status=JobStatus.condensation_reviewed)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_reviewed)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Headline.")
     db.commit()
 
     resp = client.post(
@@ -312,9 +256,9 @@ def test_correction_blocked_after_condensation_reviewed(client, db):
 
 
 def test_correction_blocked_when_not_at_condensation_ready(client, db):
-    v = _make_video(db, status=JobStatus.condensation_processing)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_processing)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Headline.")
     db.commit()
 
     resp = client.post(
@@ -334,9 +278,9 @@ def test_correction_blocked_when_not_at_condensation_ready(client, db):
 
 
 def test_correction_blocked_without_reason_category(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Headline.")
     db.commit()
 
     resp = client.post(
@@ -357,7 +301,7 @@ def test_correction_blocked_without_reason_category(client, db):
 
 
 def test_confirm_review_transitions_to_condensation_reviewed(client, db):
-    v = _make_video(db)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
     db.commit()
 
     resp = client.post(f"/api/videos/{v.id}/condensation/confirm-review")
@@ -371,7 +315,7 @@ def test_confirm_review_transitions_to_condensation_reviewed(client, db):
 
 
 def test_confirm_review_blocked_if_not_condensation_ready(client, db):
-    v = _make_video(db, status=JobStatus.condensation_processing)
+    v = make_video(db, status=JobStatus.condensation_processing)
     db.commit()
 
     resp = client.post(f"/api/videos/{v.id}/condensation/confirm-review")
@@ -387,9 +331,9 @@ def test_confirm_review_not_found(client):
 
 
 def test_confirm_review_blocks_further_corrections(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.condensation_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, quote_type="headline", headline_text="Headline.")
     db.commit()
 
     client.post(f"/api/videos/{v.id}/condensation/confirm-review")
@@ -412,7 +356,7 @@ def test_confirm_review_blocks_further_corrections(client, db):
 
 def test_phase2_confirm_review_enqueues_condensation(client, db):
     """confirm_phase2_review transitions DB to condensation_queued, response says phase2_reviewed."""
-    v = _make_video(db, status=JobStatus.phase2_ready_for_review)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
     db.commit()
 
     resp = client.post(f"/api/videos/{v.id}/phase2/confirm-review")

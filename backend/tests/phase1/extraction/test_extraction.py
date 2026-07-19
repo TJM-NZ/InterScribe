@@ -1,40 +1,13 @@
 """Gate 1 — Qwen narrative extraction (mocked)."""
 import json
-import uuid
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.phase1 import ChunkNarrative, ChunkTheme, NotableMoment, TranscriptChunk
-from app.models.video import JobStatus, MediaType, Video
+from app.models.phase1 import ChunkNarrative, ChunkTheme, NotableMoment
+from tests.conftest import make_video
+from tests.phase1.conftest import make_chunk
 from app.worker.phase1.extraction import extract_chunk, _validate_notable_moments, _validate_themes
-
-
-def _make_video(db):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=JobStatus.phase1_processing,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
-def _make_chunk(db, video_id, start_seg=0, end_seg=9):
-    c = TranscriptChunk(
-        video_id=video_id,
-        chunk_index=0,
-        start_segment_id=start_seg,
-        end_segment_id=end_seg,
-        token_count=500,
-    )
-    db.add(c)
-    db.flush()
-    return c
 
 
 _MOCK_QWEN_RESPONSE = {
@@ -73,8 +46,8 @@ def _mock_post(response_dict):
 
 
 def test_extract_chunk_creates_narrative_row(db):
-    v = _make_video(db)
-    chunk = _make_chunk(db, v.id)
+    v = make_video(db)
+    chunk = make_chunk(db, v.id)
     db.commit()
 
     with patch("app.worker.phase1.extraction.httpx.post", return_value=_mock_post(_MOCK_QWEN_RESPONSE)):
@@ -89,8 +62,8 @@ def test_extract_chunk_creates_narrative_row(db):
 
 
 def test_extract_chunk_creates_theme_rows(db):
-    v = _make_video(db)
-    chunk = _make_chunk(db, v.id)
+    v = make_video(db)
+    chunk = make_chunk(db, v.id)
     db.commit()
 
     with patch("app.worker.phase1.extraction.httpx.post", return_value=_mock_post(_MOCK_QWEN_RESPONSE)):
@@ -108,8 +81,8 @@ def test_extract_chunk_creates_theme_rows(db):
 
 
 def test_extract_chunk_creates_notable_moments_linked_to_theme(db):
-    v = _make_video(db)
-    chunk = _make_chunk(db, v.id, start_seg=0, end_seg=9)
+    v = make_video(db)
+    chunk = make_chunk(db, v.id)
     db.commit()
 
     with patch("app.worker.phase1.extraction.httpx.post", return_value=_mock_post(_MOCK_QWEN_RESPONSE)):
@@ -126,8 +99,8 @@ def test_extract_chunk_creates_notable_moments_linked_to_theme(db):
 
 
 def test_extract_chunk_no_themes(db):
-    v = _make_video(db)
-    chunk = _make_chunk(db, v.id)
+    v = make_video(db)
+    chunk = make_chunk(db, v.id)
     db.commit()
 
     empty_response = {**_MOCK_QWEN_RESPONSE, "themes": []}
@@ -141,8 +114,8 @@ def test_extract_chunk_no_themes(db):
 
 
 def test_extract_chunk_retries_on_failure(db):
-    v = _make_video(db)
-    chunk = _make_chunk(db, v.id)
+    v = make_video(db)
+    chunk = make_chunk(db, v.id)
     db.commit()
 
     call_count = 0
@@ -163,8 +136,8 @@ def test_extract_chunk_retries_on_failure(db):
 
 
 def test_extract_chunk_fails_after_all_retries(db):
-    v = _make_video(db)
-    chunk = _make_chunk(db, v.id)
+    v = make_video(db)
+    chunk = make_chunk(db, v.id)
     db.commit()
 
     with patch("app.worker.phase1.extraction.httpx.post", side_effect=ConnectionError("always fails")):

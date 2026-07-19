@@ -1,45 +1,13 @@
 """Gate 1 — chunking (CHUNK_SCHEMA anchor)."""
-import uuid
-from datetime import datetime, timezone
-
-import pytest
-
 from app.models.phase1 import TranscriptTurn
-from app.models.video import JobStatus, MediaType, Video
+from tests.conftest import make_video
+from tests.phase1.conftest import make_turn
 from app.worker.phase1.chunking import build_chunks, chunk_text_for_qwen
 
 
-def _make_video(db):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=JobStatus.phase1_processing,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
-def _make_turn(db, video_id, turn_index, start_seg, end_seg, text, tokens=100):
-    t = TranscriptTurn(
-        video_id=video_id,
-        turn_index=turn_index,
-        speaker_label="SPEAKER_00",
-        start_segment_id=start_seg,
-        end_segment_id=end_seg,
-        combined_text=text,
-        token_count=tokens,
-    )
-    db.add(t)
-    db.flush()
-    return t
-
-
 def test_single_turn_produces_one_chunk(db):
-    v = _make_video(db)
-    t = _make_turn(db, v.id, 0, 0, 2, "Hello world", tokens=100)
+    v = make_video(db)
+    t = make_turn(db, v.id, 0, 0, 2, text="Hello world")
     db.commit()
 
     chunks, groups = build_chunks(v.id, [t], max_tokens=10_000, db=db)
@@ -51,8 +19,8 @@ def test_single_turn_produces_one_chunk(db):
 
 
 def test_turns_fit_within_max_tokens(db):
-    v = _make_video(db)
-    turns = [_make_turn(db, v.id, i, i, i, f"text {i}", tokens=3_000) for i in range(4)]
+    v = make_video(db)
+    turns = [make_turn(db, v.id, i, i, i, text=f"text {i}", tokens=3_000) for i in range(4)]
     db.commit()
 
     chunks, groups = build_chunks(v.id, turns, max_tokens=10_000, db=db)
@@ -65,9 +33,9 @@ def test_turns_fit_within_max_tokens(db):
 
 
 def test_chunk_boundaries_never_split_turn(db):
-    v = _make_video(db)
+    v = make_video(db)
     # Each turn is 6000 tokens — can't pair two
-    turns = [_make_turn(db, v.id, i, i * 5, i * 5 + 4, f"big text {i}", tokens=6_000) for i in range(3)]
+    turns = [make_turn(db, v.id, i, i * 5, i * 5 + 4, text=f"big text {i}", tokens=6_000) for i in range(3)]
     db.commit()
 
     chunks, groups = build_chunks(v.id, turns, max_tokens=10_000, db=db)
@@ -78,10 +46,10 @@ def test_chunk_boundaries_never_split_turn(db):
 
 
 def test_chunk_start_end_segment_ids(db):
-    v = _make_video(db)
-    t1 = _make_turn(db, v.id, 0, 0, 2, "first", tokens=100)
-    t2 = _make_turn(db, v.id, 1, 3, 5, "second", tokens=100)
-    t3 = _make_turn(db, v.id, 2, 6, 8, "third", tokens=9_900)  # forces split
+    v = make_video(db)
+    t1 = make_turn(db, v.id, 0, 0, 2, text="first")
+    t2 = make_turn(db, v.id, 1, 3, 5, text="second")
+    t3 = make_turn(db, v.id, 2, 6, 8, text="third", tokens=9_900)  # forces split
     db.commit()
 
     chunks, groups = build_chunks(v.id, [t1, t2, t3], max_tokens=10_000, db=db)
@@ -93,8 +61,8 @@ def test_chunk_start_end_segment_ids(db):
 
 
 def test_chunk_index_sequential(db):
-    v = _make_video(db)
-    turns = [_make_turn(db, v.id, i, i, i, f"text", tokens=6_000) for i in range(3)]
+    v = make_video(db)
+    turns = [make_turn(db, v.id, i, i, i, tokens=6_000) for i in range(3)]
     db.commit()
 
     chunks, _ = build_chunks(v.id, turns, max_tokens=10_000, db=db)

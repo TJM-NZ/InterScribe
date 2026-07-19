@@ -1,80 +1,19 @@
 """Gate 3 — Phase 2 review API endpoints (SPEC-003)."""
 import uuid
-from datetime import datetime, timezone
 
-import pytest
-
-from app.models.phase1 import NotableMoment, TranscriptChunk
-from app.models.phase2 import Phase2Chunk, Quote
-from app.models.video import JobStatus, MediaType, Video
-
-
-def _make_video(db, status=JobStatus.phase2_ready_for_review):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=status,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
-def _make_phase2_chunk(db, video_id):
-    c = Phase2Chunk(
-        video_id=video_id,
-        chunk_index=0,
-        start_segment_id=0,
-        end_segment_id=9,
-        token_count=500,
-    )
-    db.add(c)
-    db.flush()
-    return c
-
-
-def _make_quote(
-    db,
-    video_id,
-    chunk_id,
-    start_seg=0,
-    end_seg=2,
-    score=0.8,
-    is_notable=False,
-    notable_moment_id=None,
-    text="This is a great quote.",
-    speaker="SPEAKER_01",
-    quote_type="substantive",
-):
-    q = Quote(
-        video_id=video_id,
-        start_segment_id=start_seg,
-        end_segment_id=end_seg,
-        start_ts=float(start_seg),
-        end_ts=float(end_seg + 1),
-        quote_text=text,
-        speaker_label=speaker,
-        quote_type=quote_type,
-        narrative_alignment_score=score,
-        is_notable_moment=is_notable,
-        notable_moment_id=notable_moment_id,
-        source_candidate_ids=[str(uuid.uuid4())],
-    )
-    db.add(q)
-    db.flush()
-    return q
+from app.models.video import JobStatus
+from tests.conftest import make_video
+from tests.phase2.conftest import make_phase2_chunk, make_quote
 
 
 # --- GET /phase2/quotes ---
 
 
 def test_get_quotes_notable_returns_only_notable_moment_quotes(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, score=0.9, is_notable=True)
-    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, score=0.7, is_notable=False)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, start_seg=0, end_seg=2, score=0.9, is_notable=True)
+    make_quote(db, v.id, start_seg=3, end_seg=5, score=0.7, is_notable=False)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=notable")
@@ -86,10 +25,10 @@ def test_get_quotes_notable_returns_only_notable_moment_quotes(client, db):
 
 
 def test_get_quotes_notable_ordered_by_segment_id(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, start_seg=10, end_seg=12, score=0.9, is_notable=True)
-    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, score=0.5, is_notable=True)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, start_seg=10, end_seg=12, score=0.9, is_notable=True)
+    make_quote(db, v.id, start_seg=3, end_seg=5, score=0.5, is_notable=True)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=notable")
@@ -100,11 +39,11 @@ def test_get_quotes_notable_ordered_by_segment_id(client, db):
 
 
 def test_get_quotes_top_returns_all_sorted_by_score_desc(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, score=0.4)
-    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, score=0.9)
-    _make_quote(db, v.id, chunk.id, start_seg=6, end_seg=8, score=0.7)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, start_seg=0, end_seg=2, score=0.4)
+    make_quote(db, v.id, start_seg=3, end_seg=5, score=0.9)
+    make_quote(db, v.id, start_seg=6, end_seg=8, score=0.7)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top")
@@ -116,10 +55,10 @@ def test_get_quotes_top_returns_all_sorted_by_score_desc(client, db):
 
 
 def test_get_quotes_top_with_limit_returns_limited(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
     for i in range(5):
-        _make_quote(db, v.id, chunk.id, start_seg=i * 3, end_seg=i * 3 + 2, score=float(i) / 5)
+        make_quote(db, v.id, start_seg=i * 3, end_seg=i * 3 + 2, score=float(i) / 5)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top&limit=2")
@@ -129,7 +68,7 @@ def test_get_quotes_top_with_limit_returns_limited(client, db):
 
 
 def test_get_quotes_invalid_view_returns_400(client, db):
-    v = _make_video(db)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=invalid")
@@ -139,7 +78,7 @@ def test_get_quotes_invalid_view_returns_400(client, db):
 
 
 def test_get_quotes_missing_view_returns_400(client, db):
-    v = _make_video(db)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes")
@@ -149,7 +88,7 @@ def test_get_quotes_missing_view_returns_400(client, db):
 
 
 def test_get_quotes_status_not_ready_returns_409(client, db):
-    v = _make_video(db, status=JobStatus.phase2_processing)
+    v = make_video(db, status=JobStatus.phase2_processing)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top")
@@ -159,9 +98,9 @@ def test_get_quotes_status_not_ready_returns_409(client, db):
 
 
 def test_get_quotes_available_after_phase2_reviewed(client, db):
-    v = _make_video(db, status=JobStatus.phase2_reviewed)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase2_reviewed)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top")
@@ -176,9 +115,9 @@ def test_get_quotes_unknown_video_returns_404(client):
 
 
 def test_get_quotes_response_includes_all_fields(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id, start_seg=2, end_seg=4, score=0.75, text="Great quote.", quote_type="headline")
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, start_seg=2, end_seg=4, score=0.75, text="Great quote.", quote_type="headline")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top")
@@ -200,10 +139,10 @@ def test_get_quotes_response_includes_all_fields(client, db):
 
 
 def test_get_quotes_type_filter_headline(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, quote_type="headline")
-    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, quote_type="substantive")
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, start_seg=0, end_seg=2, quote_type="headline")
+    make_quote(db, v.id, start_seg=3, end_seg=5, quote_type="substantive")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top&type=headline")
@@ -215,10 +154,10 @@ def test_get_quotes_type_filter_headline(client, db):
 
 
 def test_get_quotes_type_filter_substantive(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, quote_type="headline")
-    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, quote_type="substantive")
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, start_seg=0, end_seg=2, quote_type="headline")
+    make_quote(db, v.id, start_seg=3, end_seg=5, quote_type="substantive")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top&type=substantive")
@@ -230,10 +169,10 @@ def test_get_quotes_type_filter_substantive(client, db):
 
 
 def test_get_quotes_no_type_filter_returns_all(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, quote_type="headline")
-    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, quote_type="substantive")
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, start_seg=0, end_seg=2, quote_type="headline")
+    make_quote(db, v.id, start_seg=3, end_seg=5, quote_type="substantive")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top")
@@ -243,11 +182,11 @@ def test_get_quotes_no_type_filter_returns_all(client, db):
 
 
 def test_get_quotes_notable_with_type_filter(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, is_notable=True, quote_type="headline")
-    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, is_notable=True, quote_type="substantive")
-    _make_quote(db, v.id, chunk.id, start_seg=6, end_seg=8, is_notable=False, quote_type="headline")
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    make_quote(db, v.id, start_seg=0, end_seg=2, is_notable=True, quote_type="headline")
+    make_quote(db, v.id, start_seg=3, end_seg=5, is_notable=True, quote_type="substantive")
+    make_quote(db, v.id, start_seg=6, end_seg=8, is_notable=False, quote_type="headline")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=notable&type=headline")
@@ -263,9 +202,9 @@ def test_get_quotes_notable_with_type_filter(client, db):
 
 
 def test_correction_logged_on_quote_action(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id, text="Quote text.")
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id, text="Quote text.")
     db.commit()
 
     resp = client.post(
@@ -286,9 +225,9 @@ def test_correction_logged_on_quote_action(client, db):
 
 
 def test_correction_marks_quote_reviewed(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id)
     db.commit()
 
     assert q.reviewed is False
@@ -311,9 +250,9 @@ def test_correction_marks_quote_reviewed(client, db):
 
 
 def test_correction_blocked_when_wrong_entity_type(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id)
     db.commit()
 
     resp = client.post(
@@ -333,10 +272,10 @@ def test_correction_blocked_when_wrong_entity_type(client, db):
 
 
 def test_correction_blocked_when_entity_not_from_video(client, db):
-    v = _make_video(db)
-    other_v = _make_video(db)
-    chunk = _make_phase2_chunk(db, other_v.id)
-    q = _make_quote(db, other_v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    other_v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, other_v.id)
+    q = make_quote(db, other_v.id)
     db.commit()
 
     resp = client.post(
@@ -356,9 +295,9 @@ def test_correction_blocked_when_entity_not_from_video(client, db):
 
 
 def test_correction_blocked_without_reason_category(client, db):
-    v = _make_video(db)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id)
     db.commit()
 
     resp = client.post(
@@ -376,9 +315,9 @@ def test_correction_blocked_without_reason_category(client, db):
 
 
 def test_correction_blocked_after_phase2_reviewed(client, db):
-    v = _make_video(db, status=JobStatus.phase2_reviewed)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase2_reviewed)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id)
     db.commit()
 
     resp = client.post(
@@ -398,9 +337,9 @@ def test_correction_blocked_after_phase2_reviewed(client, db):
 
 
 def test_correction_blocked_when_not_at_phase2_ready(client, db):
-    v = _make_video(db, status=JobStatus.phase2_processing)
-    chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase2_processing)
+    make_phase2_chunk(db, v.id)
+    q = make_quote(db, v.id)
     db.commit()
 
     resp = client.post(
@@ -423,7 +362,7 @@ def test_correction_blocked_when_not_at_phase2_ready(client, db):
 
 
 def test_confirm_review_transitions_to_phase2_reviewed(client, db):
-    v = _make_video(db)
+    v = make_video(db, status=JobStatus.phase2_ready_for_review)
     db.commit()
 
     resp = client.post(f"/api/videos/{v.id}/phase2/confirm-review")
@@ -438,7 +377,7 @@ def test_confirm_review_transitions_to_phase2_reviewed(client, db):
 
 
 def test_confirm_review_blocked_if_not_phase2_ready(client, db):
-    v = _make_video(db, status=JobStatus.phase2_processing)
+    v = make_video(db, status=JobStatus.phase2_processing)
     db.commit()
 
     resp = client.post(f"/api/videos/{v.id}/phase2/confirm-review")

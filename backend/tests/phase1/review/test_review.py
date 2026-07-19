@@ -1,76 +1,18 @@
 """Gate 3 — Phase 1 review API endpoints."""
 import uuid
-from datetime import datetime, timezone
 
-import pytest
-
-from app.models.phase1 import (
-    ChunkNarrative,
-    NarrativeCluster,
-    NotableMoment,
-    TranscriptChunk,
-)
-from app.models.video import JobStatus, MediaType, Video
-
-
-def _make_video(db, status=JobStatus.phase1_ready_for_review):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=status,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
-def _add_cluster(db, video_id, rank=1, label="AI / technical"):
-    cluster = NarrativeCluster(
-        video_id=video_id,
-        representative_label=label,
-        cluster_size=2,
-        rank=rank,
-    )
-    db.add(cluster)
-    db.flush()
-    return cluster
-
-
-def _add_chunk(db, video_id, chunk_index=0):
-    c = TranscriptChunk(
-        video_id=video_id,
-        chunk_index=chunk_index,
-        start_segment_id=0,
-        end_segment_id=9,
-        token_count=500,
-    )
-    db.add(c)
-    db.flush()
-    return c
-
-
-def _add_moment(db, video_id, chunk_id, start_seg=0, end_seg=2):
-    m = NotableMoment(
-        chunk_id=chunk_id,
-        video_id=video_id,
-        start_segment_id=start_seg,
-        end_segment_id=end_seg,
-        description="A key insight",
-    )
-    db.add(m)
-    db.flush()
-    return m
+from app.models.video import JobStatus
+from tests.conftest import make_video, seed_video_with_segments
+from tests.phase1.conftest import make_cluster, make_chunk, make_notable_moment
 
 
 # --- GET /phase1/narrative ---
 
 def test_get_narrative_returns_clusters_and_moments(client, db):
-    v = _make_video(db)
-    _add_cluster(db, v.id)
-    chunk = _add_chunk(db, v.id)
-    _add_moment(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
+    make_cluster(db, v.id)
+    chunk = make_chunk(db, v.id)
+    make_notable_moment(db, v.id, chunk.id)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase1/narrative")
@@ -82,9 +24,9 @@ def test_get_narrative_returns_clusters_and_moments(client, db):
 
 
 def test_get_narrative_clusters_ordered_by_rank(client, db):
-    v = _make_video(db)
-    _add_cluster(db, v.id, rank=2, label="Second")
-    _add_cluster(db, v.id, rank=1, label="First")
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
+    make_cluster(db, v.id, rank=2, label="Second")
+    make_cluster(db, v.id, rank=1, label="First")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase1/narrative")
@@ -95,7 +37,7 @@ def test_get_narrative_clusters_ordered_by_rank(client, db):
 
 
 def test_get_narrative_blocked_before_phase1_ready(client, db):
-    v = _make_video(db, status=JobStatus.phase1_processing)
+    v = make_video(db, status=JobStatus.phase1_processing)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase1/narrative")
@@ -105,8 +47,8 @@ def test_get_narrative_blocked_before_phase1_ready(client, db):
 
 
 def test_get_narrative_available_after_phase1_reviewed(client, db):
-    v = _make_video(db, status=JobStatus.phase1_reviewed)
-    _add_cluster(db, v.id)
+    v = make_video(db, status=JobStatus.phase1_reviewed)
+    make_cluster(db, v.id)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase1/narrative")
@@ -117,8 +59,8 @@ def test_get_narrative_available_after_phase1_reviewed(client, db):
 # --- POST /phase1/corrections ---
 
 def test_correction_logged_on_cluster_edit(client, db):
-    v = _make_video(db)
-    cluster = _add_cluster(db, v.id)
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
+    cluster = make_cluster(db, v.id)
     db.commit()
 
     resp = client.post(
@@ -138,8 +80,8 @@ def test_correction_logged_on_cluster_edit(client, db):
 
 
 def test_correction_updates_cluster_label(client, db):
-    v = _make_video(db)
-    cluster = _add_cluster(db, v.id, label="Old Label")
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
+    cluster = make_cluster(db, v.id, label="Old Label")
     db.commit()
 
     client.post(
@@ -160,9 +102,9 @@ def test_correction_updates_cluster_label(client, db):
 
 
 def test_correction_marks_notable_moment_reviewed(client, db):
-    v = _make_video(db)
-    chunk = _add_chunk(db, v.id)
-    moment = _add_moment(db, v.id, chunk.id)
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
+    chunk = make_chunk(db, v.id)
+    moment = make_notable_moment(db, v.id, chunk.id)
     db.commit()
 
     assert moment.reviewed is False
@@ -185,8 +127,8 @@ def test_correction_marks_notable_moment_reviewed(client, db):
 
 
 def test_correction_rejected_without_reason_category(client, db):
-    v = _make_video(db)
-    cluster = _add_cluster(db, v.id)
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
+    cluster = make_cluster(db, v.id)
     db.commit()
 
     resp = client.post(
@@ -205,7 +147,7 @@ def test_correction_rejected_without_reason_category(client, db):
 
 
 def test_correction_rejected_with_invalid_entity_id(client, db):
-    v = _make_video(db)
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
     db.commit()
 
     resp = client.post(
@@ -225,8 +167,8 @@ def test_correction_rejected_with_invalid_entity_id(client, db):
 
 
 def test_correction_blocked_after_phase1_reviewed(client, db):
-    v = _make_video(db, status=JobStatus.phase1_reviewed)
-    cluster = _add_cluster(db, v.id)
+    v = make_video(db, status=JobStatus.phase1_reviewed)
+    cluster = make_cluster(db, v.id)
     db.commit()
 
     resp = client.post(
@@ -248,7 +190,7 @@ def test_correction_blocked_after_phase1_reviewed(client, db):
 # --- POST /phase1/confirm-review ---
 
 def test_confirm_review_transitions_to_phase1_reviewed(client, db):
-    v = _make_video(db)
+    v = make_video(db, status=JobStatus.phase1_ready_for_review)
     db.commit()
 
     resp = client.post(f"/api/videos/{v.id}/phase1/confirm-review")
@@ -263,7 +205,7 @@ def test_confirm_review_transitions_to_phase1_reviewed(client, db):
 
 
 def test_confirm_review_blocked_if_not_phase1_ready(client, db):
-    v = _make_video(db, status=JobStatus.phase1_processing)
+    v = make_video(db, status=JobStatus.phase1_processing)
     db.commit()
 
     resp = client.post(f"/api/videos/{v.id}/phase1/confirm-review")
@@ -278,10 +220,6 @@ def test_confirm_review_not_found(client):
 
 def test_phase1_auto_enqueued_after_spec1_confirm_review(client, db):
     """Spec 1 confirm-review triggers phase1_queued as a side effect (D3)."""
-    from app.models.video import SpeakerRoleMap, TranscriptSegment
-
-    # Set up reviewed video
-    from tests.conftest import seed_video_with_segments
     v = seed_video_with_segments(db, status=JobStatus.ready_for_review)
     db.commit()
 

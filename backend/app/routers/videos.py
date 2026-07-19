@@ -416,7 +416,7 @@ def get_timing_stats(db: Session = Depends(get_db)):
         counts = db.execute(
             select(
                 func.count().label("run_count"),
-                func.count().filter(ProcessingRun.succeeded == True).label("success_count"),
+                func.count().filter(ProcessingRun.succeeded.is_(True)).label("success_count"),
             ).where(ProcessingRun.phase == phase)
         ).one()
 
@@ -432,7 +432,7 @@ def get_timing_stats(db: Session = Depends(get_db)):
             .join(Video, ProcessingRun.video_id == Video.id)
             .where(
                 ProcessingRun.phase == phase,
-                ProcessingRun.succeeded == True,
+                ProcessingRun.succeeded.is_(True),
                 ProcessingRun.wall_seconds.isnot(None),
                 Video.duration_seconds.isnot(None),
                 Video.duration_seconds > 0,

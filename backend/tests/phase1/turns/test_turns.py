@@ -1,47 +1,13 @@
 """Gate 1 — turn grouping (TURN_GROUPING anchor)."""
-from datetime import datetime, timezone
-
-import pytest
-
-from app.models.video import JobStatus, MediaType, TranscriptSegment, Video
+from tests.conftest import make_video, make_segment
 from app.worker.phase1.turns import build_turns
 
 
-def _make_video(db):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=JobStatus.phase1_processing,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
-def _add_segments(db, video_id, specs):
-    """specs: list of (speaker_label, text)."""
-    for idx, (label, text) in enumerate(specs):
-        db.add(TranscriptSegment(
-            video_id=video_id,
-            segment_id=idx,
-            start_ts=float(idx),
-            end_ts=float(idx + 1),
-            text=text,
-            speaker_label=label,
-            confidence=0.9,
-        ))
-    db.flush()
-
-
 def test_adjacent_same_speaker_merged(db):
-    v = _make_video(db)
-    _add_segments(db, v.id, [
-        ("SPEAKER_00", "Hello"),
-        ("SPEAKER_00", "World"),
-        ("SPEAKER_01", "Goodbye"),
-    ])
+    v = make_video(db)
+    make_segment(db, v.id, 0, speaker="SPEAKER_00", text="Hello")
+    make_segment(db, v.id, 1, speaker="SPEAKER_00", text="World")
+    make_segment(db, v.id, 2, speaker="SPEAKER_01", text="Goodbye")
     db.commit()
 
     turns = build_turns(v.id, db)
@@ -59,13 +25,11 @@ def test_adjacent_same_speaker_merged(db):
 
 
 def test_alternating_speakers_produce_one_turn_each(db):
-    v = _make_video(db)
-    _add_segments(db, v.id, [
-        ("SPEAKER_00", "A"),
-        ("SPEAKER_01", "B"),
-        ("SPEAKER_00", "C"),
-        ("SPEAKER_01", "D"),
-    ])
+    v = make_video(db)
+    make_segment(db, v.id, 0, speaker="SPEAKER_00", text="A")
+    make_segment(db, v.id, 1, speaker="SPEAKER_01", text="B")
+    make_segment(db, v.id, 2, speaker="SPEAKER_00", text="C")
+    make_segment(db, v.id, 3, speaker="SPEAKER_01", text="D")
     db.commit()
 
     turns = build_turns(v.id, db)
@@ -78,10 +42,11 @@ def test_alternating_speakers_produce_one_turn_each(db):
 
 
 def test_turn_index_sequential(db):
-    v = _make_video(db)
-    _add_segments(db, v.id, [
-        ("A", "x"), ("A", "y"), ("B", "z"), ("A", "w"),
-    ])
+    v = make_video(db)
+    make_segment(db, v.id, 0, speaker="A", text="x")
+    make_segment(db, v.id, 1, speaker="A", text="y")
+    make_segment(db, v.id, 2, speaker="B", text="z")
+    make_segment(db, v.id, 3, speaker="A", text="w")
     db.commit()
 
     turns = build_turns(v.id, db)
@@ -90,12 +55,10 @@ def test_turn_index_sequential(db):
 
 
 def test_combined_text_concatenates_in_order(db):
-    v = _make_video(db)
-    _add_segments(db, v.id, [
-        ("SPEAKER_00", "First"),
-        ("SPEAKER_00", "Second"),
-        ("SPEAKER_00", "Third"),
-    ])
+    v = make_video(db)
+    make_segment(db, v.id, 0, speaker="SPEAKER_00", text="First")
+    make_segment(db, v.id, 1, speaker="SPEAKER_00", text="Second")
+    make_segment(db, v.id, 2, speaker="SPEAKER_00", text="Third")
     db.commit()
 
     turns = build_turns(v.id, db)
@@ -105,8 +68,8 @@ def test_combined_text_concatenates_in_order(db):
 
 
 def test_token_count_positive(db):
-    v = _make_video(db)
-    _add_segments(db, v.id, [("SPEAKER_00", "Hello world")])
+    v = make_video(db)
+    make_segment(db, v.id, 0, speaker="SPEAKER_00", text="Hello world")
     db.commit()
 
     turns = build_turns(v.id, db)
@@ -115,7 +78,7 @@ def test_token_count_positive(db):
 
 
 def test_empty_segments_returns_empty(db):
-    v = _make_video(db)
+    v = make_video(db)
     db.commit()
 
     turns = build_turns(v.id, db)

@@ -1,25 +1,11 @@
 import uuid
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.video import JobStatus, MediaType, TranscriptSegment, Video
+from app.models.video import JobStatus, TranscriptSegment
+from tests.conftest import make_video
 from app.worker.transcription import _compute_confidence, transcribe_video
-
-
-def _make_video(db) -> Video:
-    video = Video(
-        original_filename="interview.wav",
-        storage_path="/fake/path/interview.wav",
-        media_type=MediaType.audio,
-        status=JobStatus.queued,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(video)
-    db.commit()
-    db.refresh(video)
-    return video
 
 
 def _mock_whisperx_result():
@@ -84,7 +70,8 @@ def test_compute_confidence_default_when_no_data():
 
 
 def test_transcription_produces_segments(db):
-    video = _make_video(db)
+    video = make_video(db, status=JobStatus.queued)
+    db.commit()
     mock_result = _mock_whisperx_result()
 
     with patch("app.worker.transcription.whisperx") as mock_wx, \
@@ -115,7 +102,8 @@ def test_transcription_produces_segments(db):
 
 
 def test_transcription_uses_sequential_segment_ids(db):
-    video = _make_video(db)
+    video = make_video(db, status=JobStatus.queued)
+    db.commit()
     mock_result = _mock_whisperx_result()
 
     with patch("app.worker.transcription.whisperx") as mock_wx, \
@@ -137,7 +125,8 @@ def test_transcription_uses_sequential_segment_ids(db):
 
 
 def test_transcription_handles_missing_speaker_label(db):
-    video = _make_video(db)
+    video = make_video(db, status=JobStatus.queued)
+    db.commit()
     mock_result = _mock_whisperx_result()
 
     with patch("app.worker.transcription.whisperx") as mock_wx, \
@@ -159,7 +148,8 @@ def test_transcription_handles_missing_speaker_label(db):
 
 
 def test_transcription_failure_raises_exception(db):
-    video = _make_video(db)
+    video = make_video(db, status=JobStatus.queued)
+    db.commit()
 
     with patch("app.worker.transcription.whisperx") as mock_wx:
         mock_wx.load_model.side_effect = RuntimeError("CUDA OOM")

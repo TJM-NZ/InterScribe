@@ -111,6 +111,41 @@ def make_fake_audio(size: int = 1024) -> bytes:
     return header + b"\x00" * data_size
 
 
+def make_video(db, status=None):
+    """Create and flush a Video row. Caller is responsible for commit."""
+    from datetime import datetime, timezone
+    from app.models.video import JobStatus, MediaType, Video
+
+    v = Video(
+        original_filename="interview.wav",
+        storage_path="/fake/path/interview.wav",
+        media_type=MediaType.audio,
+        status=status or JobStatus.uploaded,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    db.add(v)
+    db.flush()
+    return v
+
+
+def make_segment(db, video_id, seg_id, speaker="SPEAKER_00", text=None, confidence=0.9):
+    """Add a TranscriptSegment row and flush it."""
+    from app.models.video import TranscriptSegment
+
+    s = TranscriptSegment(
+        video_id=video_id,
+        segment_id=seg_id,
+        start_ts=float(seg_id),
+        end_ts=float(seg_id + 1),
+        text=text if text is not None else f"Utterance {seg_id}",
+        speaker_label=speaker,
+        confidence=confidence,
+    )
+    db.add(s)
+    db.flush()
+    return s
+
+
 def seed_video_with_segments(db, speakers=None, status=None):
     """Helper: create a reviewed video with segments and speaker role maps."""
     from datetime import datetime, timezone

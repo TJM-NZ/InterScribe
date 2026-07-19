@@ -1,56 +1,23 @@
 """Gate 2 — clustering (NARRATIVE_CLUSTER anchor)."""
-import uuid
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from app.models.phase1 import ChunkTheme, NarrativeCluster, NotableMoment, TranscriptChunk
-from app.models.video import JobStatus, MediaType, Video
+from app.models.phase1 import ChunkTheme, NarrativeCluster, NotableMoment
+from tests.conftest import make_video
+from tests.phase1.conftest import make_chunk, make_theme
 from app.worker.phase1.clustering import cluster_themes, _representative_label
 
 
-def _make_video(db):
-    v = Video(
-        original_filename="t.wav",
-        storage_path="/fake/t.wav",
-        media_type=MediaType.audio,
-        status=JobStatus.phase1_processing,
-        uploaded_at=datetime.now(timezone.utc),
-    )
-    db.add(v)
-    db.flush()
-    return v
-
-
 def _make_chunk(db, video_id, chunk_index):
-    c = TranscriptChunk(
-        video_id=video_id,
-        chunk_index=chunk_index,
-        start_segment_id=chunk_index * 10,
-        end_segment_id=chunk_index * 10 + 9,
-        token_count=100,
-    )
-    db.add(c)
-    db.flush()
-    return c
+    # Segment IDs are chunk_index-relative for clustering geometry tests.
+    return make_chunk(db, video_id, chunk_index, start_seg=chunk_index * 10, end_seg=chunk_index * 10 + 9, tokens=100)
 
 
 def _make_theme(db, chunk, theme_index=0, focus="Test topic.", tags=None):
-    t = ChunkTheme(
-        chunk_id=chunk.id,
-        video_id=chunk.video_id,
-        theme_index=theme_index,
-        topic_focus=focus,
-        topic_tags=tags or ["ml"],
-        start_segment_id=chunk.start_segment_id,
-        end_segment_id=chunk.end_segment_id,
-        theme_embedding=[0.0] * 384,
-    )
-    db.add(t)
-    db.flush()
-    return t
+    # Clustering tests need zero embeddings for geometric clarity.
+    return make_theme(db, chunk, theme_index=theme_index, focus=focus, tags=tags, embedding=[0.0] * 384)
 
 
 def _mock_model(embeddings: list[list[float]]):
@@ -60,7 +27,7 @@ def _mock_model(embeddings: list[list[float]]):
 
 
 def test_single_theme_produces_one_cluster(db):
-    v = _make_video(db)
+    v = make_video(db)
     chunk = _make_chunk(db, v.id, 0)
     theme = _make_theme(db, chunk)
     db.commit()
@@ -76,7 +43,7 @@ def test_single_theme_produces_one_cluster(db):
 
 
 def test_similar_themes_cluster_together(db):
-    v = _make_video(db)
+    v = make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(3)]
     themes = [_make_theme(db, c) for c in chunks]
     db.commit()
@@ -92,7 +59,7 @@ def test_similar_themes_cluster_together(db):
 
 
 def test_distinct_themes_produce_separate_clusters(db):
-    v = _make_video(db)
+    v = make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(4)]
     themes = [
         _make_theme(db, chunks[0], focus="AI topic."),
@@ -118,7 +85,7 @@ def test_distinct_themes_produce_separate_clusters(db):
 
 
 def test_rank_by_size_descending(db):
-    v = _make_video(db)
+    v = make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(4)]
     themes = [_make_theme(db, c) for c in chunks]
     db.commit()
@@ -143,7 +110,7 @@ def test_rank_by_size_descending(db):
 
 def test_notable_moments_pass_through_even_if_singleton(db):
     """Sanity check: single notable moment in 8 chunks is present unconditionally."""
-    v = _make_video(db)
+    v = make_video(db)
     chunks = [_make_chunk(db, v.id, i) for i in range(8)]
     db.add(NotableMoment(
         chunk_id=chunks[0].id,
