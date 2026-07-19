@@ -22,8 +22,9 @@ router = APIRouter()
 @router.get("/api/videos/{video_id}/phase2/quotes")
 def get_phase2_quotes(
     video_id: uuid.UUID,
-    view: str = Query(...),
+    view: str | None = Query(None),
     limit: int | None = Query(None),
+    type: str | None = Query(None),
     db: Session = Depends(get_db),
 ):
     video = get_video_or_404(video_id, db)
@@ -41,6 +42,9 @@ def get_phase2_quotes(
         )
 
     q = select(Quote).where(Quote.video_id == video_id)
+
+    if type in ("headline", "substantive"):
+        q = q.where(Quote.quote_type == type)
 
     if view == "notable":
         q = q.where(Quote.is_notable_moment.is_(True)).order_by(Quote.start_segment_id)
@@ -62,6 +66,7 @@ def get_phase2_quotes(
                 "end_ts": quote.end_ts,
                 "quote_text": quote.quote_text,
                 "speaker_label": quote.speaker_label,
+                "quote_type": quote.quote_type,
                 "narrative_alignment_score": quote.narrative_alignment_score,
                 "is_notable_moment": quote.is_notable_moment,
                 "notable_moment_id": str(quote.notable_moment_id) if quote.notable_moment_id else None,

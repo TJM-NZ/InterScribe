@@ -11,6 +11,7 @@ import {
   logPhase2Correction,
   type NotableMoment,
   type Quote,
+  type QuoteType,
   type ReasonCategory,
   type VideoStatus,
   type VideoSummary,
@@ -58,6 +59,24 @@ function QuoteCard({ quote, notableMoment, disabled, onReject }: QuoteCardProps)
         <span>{quote.speaker_label}</span>
         <span>·</span>
         <span>{formatTimestamp(quote.start_ts)} – {formatTimestamp(quote.end_ts)}</span>
+        <span>·</span>
+        {quote.quote_type === "headline" ? (
+          <span
+            className="px-1.5 py-0.5 rounded text-amber-700 bg-amber-50 border border-amber-200 font-medium"
+            data-testid="quote-type-badge"
+            data-quote-type="headline"
+          >
+            Headline
+          </span>
+        ) : (
+          <span
+            className="px-1.5 py-0.5 rounded text-blue-700 bg-blue-50 border border-blue-200 font-medium"
+            data-testid="quote-type-badge"
+            data-quote-type="substantive"
+          >
+            Substantive
+          </span>
+        )}
         {quote.is_notable_moment && (
           <>
             <span>·</span>

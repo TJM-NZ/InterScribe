@@ -55,7 +55,7 @@ def _make_chunk(db, video_id, idx=0):
 
 def _make_candidate(
     db, video_id, chunk_id, start_seg, end_seg,
-    score=0.5, speaker="SPEAKER_01", discarded=False,
+    score=0.5, speaker="SPEAKER_01", discarded=False, quote_type="substantive",
 ):
     c = QuoteCandidate(
         phase2_chunk_id=chunk_id,
@@ -63,6 +63,7 @@ def _make_candidate(
         start_segment_id=start_seg,
         end_segment_id=end_seg,
         speaker_label=speaker,
+        quote_type=quote_type,
         narrative_alignment_score=score,
         is_notable_moment=False,
         raw_qwen_output={"candidates": []},
@@ -312,6 +313,72 @@ def test_reviewed_defaults_false_on_new_quote(db):
 
     q = db.query(Quote).filter_by(video_id=v.id).one()
     assert q.reviewed is False
+
+
+# ---------------------------------------------------------------------------
+# quote_type dedup propagation (SPEC-003-FIX-001)
+# ---------------------------------------------------------------------------
+
+def test_dedup_both_headline_promotes_headline(db):
+    v = _make_video(db)
+    segs = [_make_segment(db, v.id, i, "hello") for i in range(6)]
+    chunk = _make_chunk(db, v.id)
+    _make_candidate(db, v.id, chunk.id, 0, 4, score=0.6, quote_type="headline")
+    _make_candidate(db, v.id, chunk.id, 1, 5, score=0.8, quote_type="headline")
+    db.commit()
+
+    run_dedup_and_promote(v.id, _segments_by_id(segs), OVERLAP_RATIO, TEXT_SIM, db)
+    db.commit()
+
+    q = db.query(Quote).filter_by(video_id=v.id).one()
+    assert q.quote_type == "headline"
+
+
+def test_dedup_both_substantive_promotes_substantive(db):
+    v = _make_video(db)
+    segs = [_make_segment(db, v.id, i, "hello") for i in range(6)]
+    chunk = _make_chunk(db, v.id)
+    _make_candidate(db, v.id, chunk.id, 0, 4, score=0.5, quote_type="substantive")
+    _make_candidate(db, v.id, chunk.id, 1, 5, score=0.7, quote_type="substantive")
+    db.commit()
+
+    run_dedup_and_promote(v.id, _segments_by_id(segs), OVERLAP_RATIO, TEXT_SIM, db)
+    db.commit()
+
+    q = db.query(Quote).filter_by(video_id=v.id).one()
+    assert q.quote_type == "substantive"
+
+
+def test_dedup_mixed_type_headline_higher_score_promotes_headline(db):
+    v = _make_video(db)
+    segs = [_make_segment(db, v.id, i, "hello") for i in range(6)]
+    chunk = _make_chunk(db, v.id)
+    # headline has higher score → canonical is headline
+    _make_candidate(db, v.id, chunk.id, 0, 4, score=0.9, quote_type="headline")
+    _make_candidate(db, v.id, chunk.id, 1, 5, score=0.4, quote_type="substantive")
+    db.commit()
+
+    run_dedup_and_promote(v.id, _segments_by_id(segs), OVERLAP_RATIO, TEXT_SIM, db)
+    db.commit()
+
+    q = db.query(Quote).filter_by(video_id=v.id).one()
+    assert q.quote_type == "headline"
+
+
+def test_dedup_mixed_type_substantive_higher_score_promotes_substantive(db):
+    v = _make_video(db)
+    segs = [_make_segment(db, v.id, i, "hello") for i in range(6)]
+    chunk = _make_chunk(db, v.id)
+    # substantive has higher score → canonical is substantive
+    _make_candidate(db, v.id, chunk.id, 0, 4, score=0.3, quote_type="headline")
+    _make_candidate(db, v.id, chunk.id, 1, 5, score=0.8, quote_type="substantive")
+    db.commit()
+
+    run_dedup_and_promote(v.id, _segments_by_id(segs), OVERLAP_RATIO, TEXT_SIM, db)
+    db.commit()
+
+    q = db.query(Quote).filter_by(video_id=v.id).one()
+    assert q.quote_type == "substantive"
 
 
 def test_three_candidates_two_merged_one_solo(db):

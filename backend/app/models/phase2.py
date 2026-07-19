@@ -38,6 +38,7 @@ class QuoteCandidate(Base):
     notable_moment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("notable_moments.id", ondelete="SET NULL"), nullable=True
     )
+    quote_type: Mapped[str] = mapped_column(String, nullable=False, default="substantive", server_default="substantive")
     raw_qwen_output: Mapped[dict] = mapped_column(JSONB, nullable=False)
     discarded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     discard_reason: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -63,4 +64,5 @@ class Quote(Base):
     )
     # JSONB array of QuoteCandidate UUIDs — audit trail, not a relational FK (SPEC-003)
     source_candidate_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    quote_type: Mapped[str] = mapped_column(String, nullable=False, default="substantive", server_default="substantive")
     reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

@@ -7,6 +7,7 @@ import {
   getPhase2Quotes,
   logPhase2Correction,
   confirmPhase2Review,
+  type QuoteType,
 } from "../lib/api";
 
 beforeEach(() => {
@@ -22,6 +23,7 @@ const MOCK_QUOTE = {
   end_ts: 28.0,
   quote_text: "We found that the approach scaled well beyond expectations.",
   speaker_label: "SPEAKER_01",
+  quote_type: "substantive" as QuoteType,
   narrative_alignment_score: 0.87,
   is_notable_moment: false,
   notable_moment_id: null,
@@ -207,6 +209,61 @@ describe("logPhase2Correction", () => {
         reason_note: null,
       })
     ).rejects.toMatchObject({ detail: { code: "INVALID_ENTITY" } });
+  });
+});
+
+describe("quote_type field (SPEC-003-FIX-001)", () => {
+  it("quote shape includes quote_type as 'headline' or 'substantive'", async () => {
+    const headlineQuote = { ...MOCK_QUOTE, id: "q-hl", quote_type: "headline" as QuoteType };
+    const substantiveQuote = { ...MOCK_QUOTE, id: "q-sub", quote_type: "substantive" as QuoteType };
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ quotes: [headlineQuote, substantiveQuote] }),
+    });
+
+    const result = await getPhase2Quotes("v1", "top");
+
+    expect(result.quotes[0].quote_type).toBe("headline");
+    expect(result.quotes[1].quote_type).toBe("substantive");
+  });
+
+  it("appends type param to request URL when provided", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ quotes: [{ ...MOCK_QUOTE, quote_type: "headline" as QuoteType }] }),
+    });
+
+    await getPhase2Quotes("v1", "top", undefined, "headline");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("type=headline")
+    );
+  });
+
+  it("does not append type param to URL when not provided", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ quotes: [MOCK_QUOTE] }),
+    });
+
+    await getPhase2Quotes("v1", "top");
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).not.toContain("type=");
+  });
+
+  it("appends both limit and type params when both provided", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ quotes: [] }),
+    });
+
+    await getPhase2Quotes("v1", "top", 5, "substantive");
+
+    const calledUrl = mockFetch.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("limit=5");
+    expect(calledUrl).toContain("type=substantive");
   });
 });
 

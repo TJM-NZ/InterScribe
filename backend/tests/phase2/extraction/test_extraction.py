@@ -387,6 +387,82 @@ def test_all_retries_exhausted_raises(db):
                 )
 
 
+# ---------------------------------------------------------------------------
+# quote_type classification (SPEC-003-FIX-001)
+# ---------------------------------------------------------------------------
+
+def test_validate_candidates_headline_type():
+    raw = [{"start_segment_id": 2, "end_segment_id": 3, "type": "headline"}]
+    result = _validate_candidates(raw, chunk_start=0, chunk_end=9)
+    assert len(result) == 1
+    assert result[0]["quote_type"] == "headline"
+
+
+def test_validate_candidates_substantive_type():
+    raw = [{"start_segment_id": 2, "end_segment_id": 5, "type": "substantive"}]
+    result = _validate_candidates(raw, chunk_start=0, chunk_end=9)
+    assert len(result) == 1
+    assert result[0]["quote_type"] == "substantive"
+
+
+def test_validate_candidates_missing_type_defaults_substantive():
+    raw = [{"start_segment_id": 2, "end_segment_id": 5}]
+    result = _validate_candidates(raw, chunk_start=0, chunk_end=9)
+    assert len(result) == 1
+    assert result[0]["quote_type"] == "substantive"
+
+
+def test_validate_candidates_invalid_type_defaults_substantive():
+    raw = [{"start_segment_id": 2, "end_segment_id": 5, "type": "pull_quote"}]
+    result = _validate_candidates(raw, chunk_start=0, chunk_end=9)
+    assert len(result) == 1
+    assert result[0]["quote_type"] == "substantive"
+
+
+def test_quote_type_stored_on_candidate(db):
+    v = _make_video(db)
+    segs = _make_segments(db, v.id)
+    chunk = _make_phase2_chunk(db, v.id)
+    turn = _make_turn(db, v.id)
+    db.commit()
+
+    segments_by_id = {s.segment_id: s for s in segs}
+    typed_candidates = [
+        {"start_segment_id": 2, "end_segment_id": 3, "type": "headline"},
+        {"start_segment_id": 7, "end_segment_id": 9, "type": "substantive"},
+    ]
+
+    with patch("app.worker.phase2.extraction.httpx.post", return_value=_mock_qwen(typed_candidates)):
+        candidates = extract_phase2_chunk(
+            chunk, [turn], [], [], [], segments_by_id, None, _mock_model(), db
+        )
+
+    db.commit()
+    assert candidates[0].quote_type == "headline"
+    assert candidates[1].quote_type == "substantive"
+
+
+def test_quote_type_missing_from_qwen_defaults_substantive_on_candidate(db):
+    v = _make_video(db)
+    segs = _make_segments(db, v.id)
+    chunk = _make_phase2_chunk(db, v.id)
+    turn = _make_turn(db, v.id)
+    db.commit()
+
+    segments_by_id = {s.segment_id: s for s in segs}
+    # No "type" key in raw Qwen output
+    no_type_candidates = [{"start_segment_id": 2, "end_segment_id": 5}]
+
+    with patch("app.worker.phase2.extraction.httpx.post", return_value=_mock_qwen(no_type_candidates)):
+        candidates = extract_phase2_chunk(
+            chunk, [turn], [], [], [], segments_by_id, None, _mock_model(), db
+        )
+
+    db.commit()
+    assert len(candidates) == 1
+    assert candidates[0].quote_type == "substantive"
+
+
 def test_speaker_label_taken_from_first_segment(db):
     v = _make_video(db)
     # Two segments with different speakers

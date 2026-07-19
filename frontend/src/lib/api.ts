@@ -87,6 +87,8 @@ export interface Phase1Narrative {
   notable_moments: NotableMoment[];
 }
 
+export type QuoteType = "headline" | "substantive";
+
 export interface Quote {
   id: string;
   video_id: string;
@@ -96,6 +98,7 @@ export interface Quote {
   end_ts: number;
   quote_text: string;
   speaker_label: string;
+  quote_type: QuoteType;
   narrative_alignment_score: number;
   is_notable_moment: boolean;
   notable_moment_id: string | null;
@@ -205,10 +208,12 @@ export async function rerunTranscript(id: string): Promise<{ video_id: string; s
 export async function getPhase2Quotes(
   id: string,
   view: "notable" | "top",
-  limit?: number
+  limit?: number,
+  type?: QuoteType
 ): Promise<{ quotes: Quote[] }> {
   const params = new URLSearchParams({ view });
   if (limit !== undefined) params.set("limit", String(limit));
+  if (type !== undefined) params.set("type", type);
   const res = await fetch(`${API_BASE}/api/videos/${id}/phase2/quotes?${params}`);
   if (!res.ok) throw await res.json();
   return res.json();

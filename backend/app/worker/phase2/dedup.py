@@ -112,6 +112,7 @@ def run_dedup_and_promote(
             end_ts=seg_range[-1].end_ts,
             quote_text=text,
             speaker_label=canonical.speaker_label,
+            quote_type=canonical.quote_type,
             narrative_alignment_score=canonical.narrative_alignment_score,
             is_notable_moment=canonical.is_notable_moment,
             notable_moment_id=canonical.notable_moment_id,

@@ -46,6 +46,7 @@ def _make_quote(
     notable_moment_id=None,
     text="This is a great quote.",
     speaker="SPEAKER_01",
+    quote_type="substantive",
 ):
     q = Quote(
         video_id=video_id,
@@ -55,6 +56,7 @@ def _make_quote(
         end_ts=float(end_seg + 1),
         quote_text=text,
         speaker_label=speaker,
+        quote_type=quote_type,
         narrative_alignment_score=score,
         is_notable_moment=is_notable,
         notable_moment_id=notable_moment_id,
@@ -176,7 +178,7 @@ def test_get_quotes_unknown_video_returns_404(client):
 def test_get_quotes_response_includes_all_fields(client, db):
     v = _make_video(db)
     chunk = _make_phase2_chunk(db, v.id)
-    q = _make_quote(db, v.id, chunk.id, start_seg=2, end_seg=4, score=0.75, text="Great quote.")
+    q = _make_quote(db, v.id, chunk.id, start_seg=2, end_seg=4, score=0.75, text="Great quote.", quote_type="headline")
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top")
@@ -188,9 +190,73 @@ def test_get_quotes_response_includes_all_fields(client, db):
     assert quote["start_segment_id"] == 2
     assert quote["end_segment_id"] == 4
     assert quote["narrative_alignment_score"] == 0.75
+    assert quote["quote_type"] == "headline"
     assert quote["is_notable_moment"] is False
     assert quote["notable_moment_id"] is None
     assert quote["reviewed"] is False
+
+
+# --- quote_type filter (SPEC-003-FIX-001) ---
+
+
+def test_get_quotes_type_filter_headline(client, db):
+    v = _make_video(db)
+    chunk = _make_phase2_chunk(db, v.id)
+    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, quote_type="headline")
+    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, quote_type="substantive")
+    db.commit()
+
+    resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top&type=headline")
+
+    assert resp.status_code == 200
+    quotes = resp.json()["quotes"]
+    assert len(quotes) == 1
+    assert quotes[0]["quote_type"] == "headline"
+
+
+def test_get_quotes_type_filter_substantive(client, db):
+    v = _make_video(db)
+    chunk = _make_phase2_chunk(db, v.id)
+    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, quote_type="headline")
+    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, quote_type="substantive")
+    db.commit()
+
+    resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top&type=substantive")
+
+    assert resp.status_code == 200
+    quotes = resp.json()["quotes"]
+    assert len(quotes) == 1
+    assert quotes[0]["quote_type"] == "substantive"
+
+
+def test_get_quotes_no_type_filter_returns_all(client, db):
+    v = _make_video(db)
+    chunk = _make_phase2_chunk(db, v.id)
+    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, quote_type="headline")
+    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, quote_type="substantive")
+    db.commit()
+
+    resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=top")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["quotes"]) == 2
+
+
+def test_get_quotes_notable_with_type_filter(client, db):
+    v = _make_video(db)
+    chunk = _make_phase2_chunk(db, v.id)
+    _make_quote(db, v.id, chunk.id, start_seg=0, end_seg=2, is_notable=True, quote_type="headline")
+    _make_quote(db, v.id, chunk.id, start_seg=3, end_seg=5, is_notable=True, quote_type="substantive")
+    _make_quote(db, v.id, chunk.id, start_seg=6, end_seg=8, is_notable=False, quote_type="headline")
+    db.commit()
+
+    resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=notable&type=headline")
+
+    assert resp.status_code == 200
+    quotes = resp.json()["quotes"]
+    assert len(quotes) == 1
+    assert quotes[0]["quote_type"] == "headline"
+    assert quotes[0]["is_notable_moment"] is True
 
 
 # --- POST /phase2/corrections ---

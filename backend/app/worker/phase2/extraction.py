@@ -41,6 +41,9 @@ TRANSCRIPT CHUNK:
 Return a JSON array of quote candidates. Each object must have exactly:
 - "start_segment_id": int (a segment ID shown in brackets in the transcript above)
 - "end_segment_id": int (a segment ID shown in brackets in the transcript above)
+- "type": "headline" | "substantive"
+    headline = self-contained, punchy, ≤25 words, could appear on a front cover or social post without context
+    substantive = longer, contextually rich, requires surrounding narrative, suitable for embedding in an article or video
 
 Rules:
 - All segment IDs must fall within a single continuous speaker run
@@ -102,6 +105,9 @@ def _call_qwen(
     return _extract_json(content)
 
 
+_VALID_QUOTE_TYPES = {"headline", "substantive"}
+
+
 def _validate_candidates(raw: list, chunk_start: int, chunk_end: int) -> list[dict]:
     """Keep only structurally valid candidates within the chunk's segment range."""
     valid = []
@@ -113,7 +119,9 @@ def _validate_candidates(raw: list, chunk_start: int, chunk_end: int) -> list[di
             continue
         if start > end or start < chunk_start or end > chunk_end:
             continue
-        valid.append({"start_segment_id": start, "end_segment_id": end})
+        raw_type = item.get("type")
+        quote_type = raw_type if raw_type in _VALID_QUOTE_TYPES else "substantive"
+        valid.append({"start_segment_id": start, "end_segment_id": end, "quote_type": quote_type})
     return valid
 
 
@@ -210,6 +218,7 @@ def extract_phase2_chunk(
             start_segment_id=start_sid,
             end_segment_id=end_sid,
             speaker_label=speaker_label,
+            quote_type=cand["quote_type"],
             narrative_alignment_score=score,
             is_notable_moment=matching_moment is not None,
             notable_moment_id=matching_moment.id if matching_moment else None,
