@@ -7,6 +7,7 @@ Hard constraints from SPEC-002:
 """
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -63,7 +64,6 @@ def _pull_model_if_needed() -> None:
 
 def _extract_json(text: str) -> dict:
     """Extract JSON from response text, stripping markdown fences or think tags if present."""
-    import re
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     text = re.sub(r"^```(?:json)?\s*", "", text).strip()
     text = re.sub(r"\s*```$", "", text).strip()

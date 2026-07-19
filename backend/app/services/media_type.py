@@ -23,8 +23,3 @@ def detect_media_type(file_bytes: bytes, filename: str) -> MediaType | None:
         return MediaType.video
 
     return None
-
-
-def is_supported_extension(filename: str) -> bool:
-    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return ext in SUPPORTED_EXTENSIONS

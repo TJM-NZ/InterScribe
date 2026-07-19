@@ -1,5 +1,15 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+export function formatTimestamp(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export function extractApiError(err: unknown, fallback: string): string {
+  return (err as { detail?: { error?: string } })?.detail?.error ?? fallback;
+}
+
 export type VideoStatus =
   | "uploaded"
   | "queued"

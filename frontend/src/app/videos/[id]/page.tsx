@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   confirmReview,
+  extractApiError,
   getTranscript,
   getVideo,
   type SpeakerRole,
@@ -31,8 +32,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         setVideo(v);
         setSegments(t.segments);
       } catch (err: unknown) {
-        const detail = (err as { detail?: { error?: string } })?.detail;
-        setError(detail?.error ?? "Failed to load review");
+        setError(extractApiError(err, "Failed to load review"));
       } finally {
         setLoading(false);
       }
@@ -49,8 +49,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
       await confirmReview(id);
       router.push("/");
     } catch (err: unknown) {
-      const detail = (err as { detail?: { error?: string } })?.detail;
-      setError(detail?.error ?? "Failed to confirm review");
+      setError(extractApiError(err, "Failed to confirm review"));
       setConfirming(false);
     }
   };

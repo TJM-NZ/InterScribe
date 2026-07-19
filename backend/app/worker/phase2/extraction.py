@@ -8,6 +8,7 @@ Implements QUOTE_GROUNDING anchor from SPEC-003:
 """
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -65,7 +66,6 @@ def _format_notable_moments_context(moments: list[NotableMoment]) -> str:
 
 
 def _extract_json(text: str) -> list:
-    import re
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     text = re.sub(r"^```(?:json)?\s*", "", text).strip()
     text = re.sub(r"\s*```$", "", text).strip()

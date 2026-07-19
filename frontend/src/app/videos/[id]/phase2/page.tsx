@@ -4,6 +4,8 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   confirmPhase2Review,
+  extractApiError,
+  formatTimestamp,
   getPhase1Narrative,
   getPhase2Quotes,
   logPhase2Correction,
@@ -19,12 +21,6 @@ import CorrectionModal from "@/components/CorrectionModal";
 type ModalState =
   | { kind: "reject-quote"; quote: Quote }
   | null;
-
-function formatTs(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 function ScoreBar({ score }: { score: number }) {
   return (
@@ -61,7 +57,7 @@ function QuoteCard({ quote, notableMoment, disabled, onReject }: QuoteCardProps)
       <div className="flex items-center gap-3 text-xs text-gray-500">
         <span>{quote.speaker_label}</span>
         <span>·</span>
-        <span>{formatTs(quote.start_ts)} – {formatTs(quote.end_ts)}</span>
+        <span>{formatTimestamp(quote.start_ts)} – {formatTimestamp(quote.end_ts)}</span>
         {quote.is_notable_moment && (
           <>
             <span>·</span>
@@ -122,8 +118,7 @@ export default function Phase2ReviewPage({ params }: { params: Promise<{ id: str
         setQuotes(quotesData.quotes);
         setNotableMoments(narrativeData.notable_moments);
       } catch (err: unknown) {
-        const detail = (err as { detail?: { error?: string } })?.detail;
-        setError(detail?.error ?? "Failed to load Phase 2 review");
+        setError(extractApiError(err, "Failed to load Phase 2 review"));
       } finally {
         setLoading(false);
       }
@@ -165,8 +160,7 @@ export default function Phase2ReviewPage({ params }: { params: Promise<{ id: str
       await confirmPhase2Review(id);
       router.push("/");
     } catch (err: unknown) {
-      const detail = (err as { detail?: { error?: string } })?.detail;
-      setError(detail?.error ?? "Failed to confirm review");
+      setError(extractApiError(err, "Failed to confirm review"));
       setConfirming(false);
     }
   };

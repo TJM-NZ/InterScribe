@@ -16,7 +16,7 @@ def build_chunks(
 ) -> tuple[list[TranscriptChunk], list[list[TranscriptTurn]]]:
     """Greedy chunking: fill until next turn would overflow, then close current chunk."""
     if not turns:
-        return []
+        return [], []
 
     chunk_groups: list[list[TranscriptTurn]] = []
     current: list[TranscriptTurn] = []

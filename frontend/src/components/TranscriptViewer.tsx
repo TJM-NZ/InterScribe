@@ -1,14 +1,8 @@
 "use client";
 
-import type { TranscriptSegment } from "@/lib/api";
+import { formatTimestamp, type TranscriptSegment } from "@/lib/api";
 
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 interface Props {
   segments: TranscriptSegment[];
@@ -37,7 +31,7 @@ export default function TranscriptViewer({ segments, speakerRoles = {} }: Props)
           >
             <div className="flex items-baseline gap-2 mb-0.5">
               <span className="text-xs font-mono text-gray-400 shrink-0">
-                {formatTime(seg.start_ts)}
+                {formatTimestamp(seg.start_ts)}
               </span>
               <span className="text-xs font-medium text-gray-500">
                 {seg.speaker_label}

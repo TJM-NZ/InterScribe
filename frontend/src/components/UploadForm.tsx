@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { uploadVideo } from "@/lib/api";
+import { extractApiError, uploadVideo } from "@/lib/api";
 
 interface Props {
   onUploaded: (id: string) => void;
@@ -20,8 +20,7 @@ export default function UploadForm({ onUploaded }: Props) {
       const result = await uploadVideo(file);
       onUploaded(result.id);
     } catch (err: unknown) {
-      const detail = (err as { detail?: { error?: string } })?.detail;
-      setError(detail?.error ?? "Upload failed");
+      setError(extractApiError(err, "Upload failed"));
     } finally {
       setUploading(false);
     }

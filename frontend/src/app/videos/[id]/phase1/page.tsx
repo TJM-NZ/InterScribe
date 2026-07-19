@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   confirmPhase1Review,
+  extractApiError,
   getPhase1Narrative,
   getVideo,
   logCorrection,
@@ -43,8 +44,7 @@ export default function Phase1ReviewPage({ params }: { params: Promise<{ id: str
         setVideo(v);
         setNarrative(n);
       } catch (err: unknown) {
-        const detail = (err as { detail?: { error?: string } })?.detail;
-        setError(detail?.error ?? "Failed to load Phase 1 review");
+        setError(extractApiError(err, "Failed to load Phase 1 review"));
       } finally {
         setLoading(false);
       }
@@ -153,8 +153,7 @@ export default function Phase1ReviewPage({ params }: { params: Promise<{ id: str
       await confirmPhase1Review(id);
       router.push("/");
     } catch (err: unknown) {
-      const detail = (err as { detail?: { error?: string } })?.detail;
-      setError(detail?.error ?? "Failed to confirm review");
+      setError(extractApiError(err, "Failed to confirm review"));
       setConfirming(false);
     }
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { assignSpeakers, type SpeakerRole } from "@/lib/api";
+import { assignSpeakers, extractApiError, type SpeakerRole } from "@/lib/api";
 
 const ROLES: { value: SpeakerRole; label: string }[] = [
   { value: "interviewer", label: "Interviewer" },
@@ -40,8 +40,7 @@ export default function SpeakerRoleForm({ videoId, speakerLabels, initialRoles =
       );
       onSaved(roles);
     } catch (err: unknown) {
-      const detail = (err as { detail?: { error?: string } })?.detail;
-      setError(detail?.error ?? "Failed to save roles");
+      setError(extractApiError(err, "Failed to save roles"));
     } finally {
       setSaving(false);
     }
