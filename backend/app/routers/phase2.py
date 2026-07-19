@@ -144,7 +144,7 @@ def confirm_phase2_review(video_id: uuid.UUID, db: Session = Depends(get_db)):
             detail=api_error("Video not at phase2_ready_for_review", "PHASE2_NOT_READY"),
         )
 
-    video.status = JobStatus.phase2_reviewed
+    video.status = JobStatus.condensation_queued
     db.commit()
 
     return {"video_id": str(video_id), "status": "phase2_reviewed"}

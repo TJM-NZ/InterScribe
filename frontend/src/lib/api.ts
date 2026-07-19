@@ -23,6 +23,10 @@ export type VideoStatus =
   | "phase2_processing"
   | "phase2_ready_for_review"
   | "phase2_reviewed"
+  | "condensation_queued"
+  | "condensation_processing"
+  | "condensation_ready_for_review"
+  | "condensation_reviewed"
   | "failed";
 
 export interface VideoSummary {
@@ -74,7 +78,7 @@ export interface NotableMoment {
   reviewed: boolean;
 }
 
-export type CorrectionEntityType = "narrative_cluster" | "notable_moment" | "quote";
+export type CorrectionEntityType = "narrative_cluster" | "notable_moment" | "quote" | "headline_condensation";
 
 export type ReasonCategory =
   | "model_error"
@@ -97,6 +101,7 @@ export interface Quote {
   start_ts: number;
   end_ts: number;
   quote_text: string;
+  headline_text: string | null;
   speaker_label: string;
   quote_type: QuoteType;
   narrative_alignment_score: number;
@@ -242,6 +247,41 @@ export async function logPhase2Correction(
 
 export async function confirmPhase2Review(id: string): Promise<{ video_id: string; status: string }> {
   const res = await fetch(`${API_BASE}/api/videos/${id}/phase2/confirm-review`, {
+    method: "POST",
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function getCondensationHeadlines(id: string): Promise<{ quotes: Quote[] }> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/condensation/headlines`);
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function logCondensationCorrection(
+  videoId: string,
+  payload: {
+    entity_type: "headline_condensation";
+    entity_id: string;
+    field_name: string | null;
+    original_value: Record<string, unknown> | null;
+    corrected_value: Record<string, unknown> | null;
+    reason_category: ReasonCategory;
+    reason_note: string | null;
+  }
+): Promise<{ correction_id: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${videoId}/condensation/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function confirmCondensationReview(id: string): Promise<{ video_id: string; status: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${id}/condensation/confirm-review`, {
     method: "POST",
   });
   if (!res.ok) throw await res.json();

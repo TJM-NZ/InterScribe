@@ -10,6 +10,8 @@ const STATUS_ORDER: VideoStatus[] = [
   "ready_for_review",
   "phase1_queued", "phase1_processing", "phase1_ready_for_review", "phase1_reviewed",
   "phase2_queued", "phase2_processing", "phase2_ready_for_review", "phase2_reviewed",
+  "condensation_queued", "condensation_processing",
+  "condensation_ready_for_review", "condensation_reviewed",
 ];
 
 function phaseTabsFor(status: VideoStatus) {
@@ -19,6 +21,7 @@ function phaseTabsFor(status: VideoStatus) {
     transcript: at("ready_for_review"),
     narrative: at("phase1_ready_for_review"),
     quotes: at("phase2_ready_for_review"),
+    condensation: at("condensation_ready_for_review"),
   };
 }
 
@@ -72,11 +75,12 @@ export default function VideoLayout({
 
   const tabs = video
     ? phaseTabsFor(video.status)
-    : { transcript: false, narrative: false, quotes: false };
+    : { transcript: false, narrative: false, quotes: false, condensation: false };
 
   const isTranscript = pathname === `/videos/${id}`;
   const isPhase1 = pathname === `/videos/${id}/phase1`;
   const isPhase2 = pathname === `/videos/${id}/phase2`;
+  const isCondensation = pathname === `/videos/${id}/condensation`;
 
   return (
     <div>
@@ -106,6 +110,9 @@ export default function VideoLayout({
           </TabLink>
           <TabLink href={`/videos/${id}/phase2`} active={isPhase2} enabled={tabs.quotes}>
             Quotes
+          </TabLink>
+          <TabLink href={`/videos/${id}/condensation`} active={isCondensation} enabled={tabs.condensation}>
+            Headlines
           </TabLink>
         </nav>
       </div>

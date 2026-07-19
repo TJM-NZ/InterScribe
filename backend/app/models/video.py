@@ -26,6 +26,10 @@ class JobStatus(str, PyEnum):
     phase2_processing = "phase2_processing"
     phase2_ready_for_review = "phase2_ready_for_review"
     phase2_reviewed = "phase2_reviewed"
+    condensation_queued = "condensation_queued"
+    condensation_processing = "condensation_processing"
+    condensation_ready_for_review = "condensation_ready_for_review"
+    condensation_reviewed = "condensation_reviewed"
     failed = "failed"
 
 
@@ -36,20 +40,32 @@ TRANSCRIPT_VIEWABLE_STATUSES = frozenset({
     JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
     JobStatus.phase2_queued, JobStatus.phase2_processing,
     JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
+    JobStatus.condensation_queued, JobStatus.condensation_processing,
+    JobStatus.condensation_ready_for_review, JobStatus.condensation_reviewed,
 })
 SPEAKER_REVIEW_STATUSES = frozenset({JobStatus.ready_for_review})
 PHASE1_VIEWABLE_STATUSES = frozenset({
     JobStatus.phase1_ready_for_review, JobStatus.phase1_reviewed,
     JobStatus.phase2_queued, JobStatus.phase2_processing,
     JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
+    JobStatus.condensation_queued, JobStatus.condensation_processing,
+    JobStatus.condensation_ready_for_review, JobStatus.condensation_reviewed,
 })
-PHASE2_VIEWABLE_STATUSES = frozenset({JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed})
+PHASE2_VIEWABLE_STATUSES = frozenset({
+    JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed,
+    JobStatus.condensation_queued, JobStatus.condensation_processing,
+    JobStatus.condensation_ready_for_review, JobStatus.condensation_reviewed,
+})
+CONDENSATION_VIEWABLE_STATUSES = frozenset({
+    JobStatus.condensation_ready_for_review, JobStatus.condensation_reviewed,
+})
 
 
 class ProcessingPhase(str, PyEnum):
     transcription = "transcription"
     phase1 = "phase1"
     phase2 = "phase2"
+    condensation = "condensation"
 
 
 class SpeakerRole(str, PyEnum):

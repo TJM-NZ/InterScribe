@@ -16,7 +16,11 @@ const STATUS_LABELS: Record<VideoStatus, string> = {
   phase2_queued: "Quote extraction queued",
   phase2_processing: "Extracting quotes…",
   phase2_ready_for_review: "Ready for Phase 2 review",
-  phase2_reviewed: "Complete",
+  phase2_reviewed: "Phase 2 complete",
+  condensation_queued: "Condensation queued",
+  condensation_processing: "Condensing headlines…",
+  condensation_ready_for_review: "Ready for headline review",
+  condensation_reviewed: "Complete",
   failed: "Failed",
 };
 
@@ -33,6 +37,10 @@ const STATUS_COLORS: Record<VideoStatus, string> = {
   phase2_processing: "bg-blue-100 text-blue-700",
   phase2_ready_for_review: "bg-violet-100 text-violet-700",
   phase2_reviewed: "bg-emerald-100 text-emerald-700",
+  condensation_queued: "bg-yellow-100 text-yellow-700",
+  condensation_processing: "bg-blue-100 text-blue-700",
+  condensation_ready_for_review: "bg-orange-100 text-orange-700",
+  condensation_reviewed: "bg-emerald-100 text-emerald-700",
   failed: "bg-red-100 text-red-700",
 };
 
@@ -42,7 +50,15 @@ interface Props {
 }
 
 function getDetailPath(videoId: string, status: VideoStatus): string | null {
-  if (status === "phase2_ready_for_review" || status === "phase2_reviewed") {
+  if (status === "condensation_ready_for_review" || status === "condensation_reviewed") {
+    return `/videos/${videoId}/condensation`;
+  }
+  if (
+    status === "phase2_ready_for_review" ||
+    status === "phase2_reviewed" ||
+    status === "condensation_queued" ||
+    status === "condensation_processing"
+  ) {
     return `/videos/${videoId}/phase2`;
   }
   if (
@@ -125,6 +141,20 @@ function VideoActionsDropdown({
       onClick: async () => { await rerunVideo(v.id); await onRefreshVideo(v.id); },
       style: "danger",
     });
+  } else if (v.status === "condensation_queued" || v.status === "condensation_processing") {
+    actions.push({ label: "View quotes", href: `/videos/${v.id}/phase2`, style: "secondary" });
+    actions.push({ label: "View narrative", href: `/videos/${v.id}/phase1`, style: "secondary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
+  } else if (v.status === "condensation_ready_for_review") {
+    actions.push({ label: "Review headlines", href: `/videos/${v.id}/condensation`, style: "primary" });
+    actions.push({ label: "View quotes", href: `/videos/${v.id}/phase2`, style: "secondary" });
+    actions.push({ label: "View narrative", href: `/videos/${v.id}/phase1`, style: "secondary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
+  } else if (v.status === "condensation_reviewed") {
+    actions.push({ label: "View headlines", href: `/videos/${v.id}/condensation`, style: "secondary" });
+    actions.push({ label: "View quotes", href: `/videos/${v.id}/phase2`, style: "secondary" });
+    actions.push({ label: "View narrative", href: `/videos/${v.id}/phase1`, style: "secondary" });
+    actions.push({ label: "View transcript", href: `/videos/${v.id}`, style: "secondary" });
   } else if (v.status === "failed") {
     actions.push({
       label: "Retry",
@@ -137,6 +167,7 @@ function VideoActionsDropdown({
     "ready_for_review",
     "phase1_ready_for_review", "phase1_reviewed",
     "phase2_ready_for_review", "phase2_reviewed",
+    "condensation_ready_for_review", "condensation_reviewed",
   ];
   if (postTranscriptStatuses.includes(v.status)) {
     actions.push({

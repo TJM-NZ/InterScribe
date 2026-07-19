@@ -13,12 +13,14 @@ from app.database import Base, UUID
 class CorrectionStage(str, PyEnum):
     phase1 = "phase1"
     phase2 = "phase2"
+    condensation = "condensation"
 
 
 class CorrectionEntityType(str, PyEnum):
     narrative_cluster = "narrative_cluster"
     notable_moment = "notable_moment"
     quote = "quote"
+    headline_condensation = "headline_condensation"
 
 
 class ReasonCategory(str, PyEnum):

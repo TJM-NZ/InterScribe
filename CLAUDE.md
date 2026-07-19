@@ -2,7 +2,7 @@
 
 AI audio/video editor — ingestion, transcription, narrative extraction. Specs 1–5.
 
-Specs: `.claude/docs/SPEC-001.md` (complete — all 4 gates passed) | `.claude/docs/SPEC-002.md` (complete — all 4 gates passed) | `.claude/docs/SPEC-003.md` (active)
+Specs: `.claude/docs/SPEC-001.md` (complete — all 4 gates passed) | `.claude/docs/SPEC-002.md` (complete — all 4 gates passed) | `.claude/docs/SPEC-003.md` (complete — Gates 1-3 passed) | `.claude/docs/SPEC-004.md` (complete — all 3 gates passed)
 
 ## Stack
 
@@ -111,11 +111,13 @@ Gate 2 Review UI (Spec 2)
 
 ## Job Status Flow
 
-`uploaded → queued → transcribing → ready_for_review → reviewed → phase1_queued → phase1_processing → phase1_ready_for_review → phase1_reviewed → phase2_queued → phase2_processing → phase2_ready_for_review → phase2_reviewed | failed`
+`uploaded → queued → transcribing → ready_for_review → reviewed → phase1_queued → phase1_processing → phase1_ready_for_review → phase1_reviewed → phase2_queued → phase2_processing → phase2_ready_for_review → phase2_reviewed → condensation_queued → condensation_processing → condensation_ready_for_review → condensation_reviewed | failed`
 
 Linear only, no skipping. `failed` can occur at any stage; `error_reason` populated.
 `reviewed → phase1_queued` is automatic (side effect of POST /confirm-review).
 `phase1_reviewed → phase2_queued` is automatic (side effect of POST /phase1/confirm-review).
+`phase2_reviewed → condensation_queued` is automatic (side effect of POST /phase2/confirm-review); response body still returns "phase2_reviewed".
+Zero-headline shortcut: condensation_queued → condensation_reviewed immediately (no worker run) when video has no headline-type Quote rows.
 
 ## Load-Bearing Schema Notes
 

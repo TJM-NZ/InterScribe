@@ -433,7 +433,8 @@ def test_confirm_review_transitions_to_phase2_reviewed(client, db):
 
     db.expire(v)
     db.refresh(v)
-    assert v.status == JobStatus.phase2_reviewed
+    # DB transitions to condensation_queued; response body still says phase2_reviewed
+    assert v.status == JobStatus.condensation_queued
 
 
 def test_confirm_review_blocked_if_not_phase2_ready(client, db):

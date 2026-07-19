@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
+from app.models.phase2 import Quote
 from app.models.video import JobStatus, ProcessingPhase, ProcessingRun, Video
 from app.worker.transcription import transcribe_video
 from app.worker.phase1.extraction import unload_qwen_model
 from app.worker.phase1.pipeline import process_phase1
 from app.worker.phase2.pipeline import process_phase2
+from app.worker.condensation.pipeline import process_condensation
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ _STUCK_STATES = {
     JobStatus.transcribing: JobStatus.queued,
     JobStatus.phase1_processing: JobStatus.phase1_queued,
     JobStatus.phase2_processing: JobStatus.phase2_queued,
+    JobStatus.condensation_processing: JobStatus.condensation_queued,
 }
 
 
@@ -129,6 +132,33 @@ def run_worker():
             if video is not None:
                 logger.info("Phase 2 processing video %s (%s)", video.id, video.original_filename)
                 _run_pipeline(video, db, JobStatus.phase2_processing, process_phase2, "Phase 2", ProcessingPhase.phase2, unload_gpu=True)
+                continue
+
+            video = _pick_next(db, JobStatus.condensation_queued)
+            if video is not None:
+                headline_count = db.execute(
+                    select(func.count(Quote.id))
+                    .where(Quote.video_id == video.id)
+                    .where(Quote.quote_type == "headline")
+                ).scalar() or 0
+                if headline_count == 0:
+                    logger.info(
+                        "No headline quotes for video %s — skipping condensation", video.id
+                    )
+                    video.status = JobStatus.condensation_reviewed
+                    db.commit()
+                else:
+                    logger.info(
+                        "Condensation processing video %s (%s)", video.id, video.original_filename
+                    )
+                    _run_pipeline(
+                        video, db,
+                        JobStatus.condensation_processing,
+                        process_condensation,
+                        "Condensation",
+                        ProcessingPhase.condensation,
+                        unload_gpu=True,
+                    )
                 continue
 
         time.sleep(POLL_INTERVAL)

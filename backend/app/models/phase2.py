@@ -66,3 +66,4 @@ class Quote(Base):
     source_candidate_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
     quote_type: Mapped[str] = mapped_column(String, nullable=False, default="substantive", server_default="substantive")
     reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    headline_text: Mapped[str | None] = mapped_column(Text, nullable=True)
