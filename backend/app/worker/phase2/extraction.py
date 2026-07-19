@@ -30,7 +30,6 @@ _SYSTEM_PROMPT = (
 )
 
 _USER_TEMPLATE = """\
-/no_think
 INTERVIEW CONTEXT — dominant narrative themes:
 {cluster_context}
 
@@ -101,6 +100,7 @@ def _call_qwen(
             {"role": "user", "content": user_content},
         ],
         "stream": False,
+        "think": False,
         "options": {"num_ctx": 16384},
     }
     resp = httpx.post(
