@@ -111,7 +111,11 @@ function QuoteCard({ quote, notableMoment, disabled, onReject }: QuoteCardProps)
   );
 }
 
-const PAST_PHASE2 = new Set<VideoStatus>(["phase2_reviewed"]);
+const PAST_PHASE2 = new Set<VideoStatus>([
+  "phase2_reviewed",
+  "condensation_queued", "condensation_processing",
+  "condensation_ready_for_review", "condensation_reviewed",
+]);
 
 export default function Phase2ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

@@ -196,7 +196,6 @@ def extract_chunk(
         domain=domain,
         tone=tone,
         topic_tags=list(dict.fromkeys(all_tags)),  # deduplicated, order-preserving
-        narrative_embedding=[0.0] * 384,  # unused; kept for schema compat
         raw_qwen_output=raw,
     )
     db.add(narrative)

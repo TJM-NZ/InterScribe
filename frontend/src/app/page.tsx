@@ -10,6 +10,7 @@ const IN_PROGRESS_STATUSES = new Set([
   "uploaded", "queued", "transcribing",
   "phase1_queued", "phase1_processing",
   "phase2_queued", "phase2_processing",
+  "condensation_queued", "condensation_processing",
 ]);
 
 export default function HomePage() {

@@ -27,15 +27,26 @@ from sqlalchemy.orm import Session
 # with no Location header — the S3 bucket is gone. Replace load_vad_model with
 # a version that loads the cached pyannote/segmentation-3.0 model directly,
 # skipping the download and SHA256 check.
-_PYANNOTE_SEG_3_FP = (
-    "/models/hf/hub/models--pyannote--segmentation-3.0"
-    "/snapshots/e66f3d3b9eb0873085418a7b813d3b369bf160bb/pytorch_model.bin"
-)
+def _find_pyannote_seg3(hf_home: str) -> str:
+    """Return the cached pytorch_model.bin path for pyannote/segmentation-3.0.
+
+    Searches the HuggingFace cache directory under hf_home. Falls back to the
+    model ID string so Model.from_pretrained can attempt its own resolution.
+    """
+    import glob
+    import os
+    pattern = os.path.join(
+        hf_home, "hub", "models--pyannote--segmentation-3.0",
+        "snapshots", "*", "pytorch_model.bin",
+    )
+    matches = sorted(glob.glob(pattern))
+    return matches[-1] if matches else "pyannote/segmentation-3.0"
 
 
 def _load_vad_local(device, vad_onset=0.500, vad_offset=0.363, use_auth_token=None, model_fp=None):
     if model_fp is None:
-        model_fp = _PYANNOTE_SEG_3_FP
+        from app.config import settings as _settings
+        model_fp = _find_pyannote_seg3(_settings.hf_home)
     vad_model = _vad_module.Model.from_pretrained(model_fp, use_auth_token=use_auth_token)
     # pyannote/segmentation-3.0 no longer exposes onset/offset — only duration filters
     vad_pipeline = _vad_module.VoiceActivitySegmentation(

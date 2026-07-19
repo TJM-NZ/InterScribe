@@ -1,10 +1,16 @@
 import uuid
+from enum import Enum as PyEnum
 
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base, UUID
+
+
+class QuoteType(str, PyEnum):
+    headline = "headline"
+    substantive = "substantive"
 
 
 class Phase2Chunk(Base):
@@ -38,7 +44,7 @@ class QuoteCandidate(Base):
     notable_moment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("notable_moments.id", ondelete="SET NULL"), nullable=True
     )
-    quote_type: Mapped[str] = mapped_column(String, nullable=False, default="substantive", server_default="substantive")
+    quote_type: Mapped[QuoteType] = mapped_column(String, nullable=False, default=QuoteType.substantive, server_default="substantive")
     raw_qwen_output: Mapped[dict] = mapped_column(JSONB, nullable=False)
     discarded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     discard_reason: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -64,6 +70,6 @@ class Quote(Base):
     )
     # JSONB array of QuoteCandidate UUIDs — audit trail, not a relational FK (SPEC-003)
     source_candidate_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
-    quote_type: Mapped[str] = mapped_column(String, nullable=False, default="substantive", server_default="substantive")
+    quote_type: Mapped[QuoteType] = mapped_column(String, nullable=False, default=QuoteType.substantive, server_default="substantive")
     reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     headline_text: Mapped[str | None] = mapped_column(Text, nullable=True)

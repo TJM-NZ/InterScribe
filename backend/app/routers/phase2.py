@@ -12,7 +12,7 @@ from app.models.phase1 import (
     CorrectionStage,
     ReasonCategory,
 )
-from app.models.phase2 import Quote
+from app.models.phase2 import Quote, QuoteType
 from app.models.video import JobStatus, PHASE2_VIEWABLE_STATUSES, Video
 from app.schemas import CorrectionRequest
 
@@ -43,8 +43,8 @@ def get_phase2_quotes(
 
     q = select(Quote).where(Quote.video_id == video_id)
 
-    if type in ("headline", "substantive"):
-        q = q.where(Quote.quote_type == type)
+    if type in (QuoteType.headline.value, QuoteType.substantive.value):
+        q = q.where(Quote.quote_type == QuoteType(type))
 
     if view == "notable":
         q = q.where(Quote.is_notable_moment.is_(True)).order_by(Quote.start_segment_id)

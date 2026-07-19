@@ -89,7 +89,6 @@ class ChunkNarrative(Base):
     domain: Mapped[str] = mapped_column(String, nullable=False)
     tone: Mapped[str] = mapped_column(String, nullable=False)
     topic_tags: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    narrative_embedding = mapped_column(Vector(384), nullable=False)
     raw_qwen_output: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
     chunk: Mapped["TranscriptChunk"] = relationship(back_populates="narrative")

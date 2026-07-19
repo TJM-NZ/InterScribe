@@ -19,6 +19,13 @@ import NarrativeClusterCard from "@/components/NarrativeClusterCard";
 import NotableMomentCard from "@/components/NotableMomentCard";
 import CorrectionModal from "@/components/CorrectionModal";
 
+const PAST_PHASE1 = new Set<VideoStatus>([
+  "phase1_reviewed", "phase2_queued", "phase2_processing",
+  "phase2_ready_for_review", "phase2_reviewed",
+  "condensation_queued", "condensation_processing",
+  "condensation_ready_for_review", "condensation_reviewed",
+]);
+
 type ModalState =
   | { kind: "edit-cluster"; cluster: NarrativeCluster }
   | { kind: "reject-cluster"; cluster: NarrativeCluster }
@@ -158,10 +165,6 @@ export default function Phase1ReviewPage({ params }: { params: Promise<{ id: str
     }
   };
 
-  const PAST_PHASE1 = new Set<VideoStatus>([
-    "phase1_reviewed", "phase2_queued", "phase2_processing",
-    "phase2_ready_for_review", "phase2_reviewed",
-  ]);
   const isReviewed = video != null && PAST_PHASE1.has(video.status);
   const canConfirm = video?.status === "phase1_ready_for_review";
 

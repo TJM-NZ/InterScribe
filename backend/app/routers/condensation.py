@@ -11,7 +11,7 @@ from app.models.phase1 import (
     CorrectionEntityType,
     CorrectionStage,
 )
-from app.models.phase2 import Quote
+from app.models.phase2 import Quote, QuoteType
 from app.models.video import CONDENSATION_VIEWABLE_STATUSES, JobStatus
 from app.schemas import CorrectionRequest
 
@@ -32,7 +32,7 @@ def get_condensation_headlines(video_id: uuid.UUID, db: Session = Depends(get_db
         db.execute(
             select(Quote)
             .where(Quote.video_id == video_id)
-            .where(Quote.quote_type == "headline")
+            .where(Quote.quote_type == QuoteType.headline)
             .order_by(Quote.narrative_alignment_score.desc())
         )
         .scalars()
@@ -95,7 +95,7 @@ def log_condensation_correction(
         )
 
     quote = db.get(Quote, body.entity_id)
-    if not quote or quote.video_id != video_id or quote.quote_type != "headline":
+    if not quote or quote.video_id != video_id or quote.quote_type != QuoteType.headline:
         raise HTTPException(
             status_code=400,
             detail=api_error(
@@ -113,7 +113,7 @@ def log_condensation_correction(
         if new_text is not None:
             quote.headline_text = new_text
     elif body.field_name == "quote_type":
-        quote.quote_type = "substantive"
+        quote.quote_type = QuoteType.substantive
         quote.headline_text = None
     else:
         raise HTTPException(

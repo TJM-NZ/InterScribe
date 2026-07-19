@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.phase1 import NarrativeCluster
-from app.models.phase2 import Quote
+from app.models.phase2 import Quote, QuoteType
 from app.models.video import JobStatus, Video
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ def process_condensation(video: Video, db: Session) -> None:
         db.execute(
             select(Quote)
             .where(Quote.video_id == video.id)
-            .where(Quote.quote_type == "headline")
+            .where(Quote.quote_type == QuoteType.headline)
             .order_by(Quote.narrative_alignment_score.desc())
         )
         .scalars()

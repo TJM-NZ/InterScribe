@@ -17,7 +17,7 @@ from sentence_transformers import SentenceTransformer
 
 from app.config import settings
 from app.models.phase1 import NarrativeCluster, NotableMoment, TranscriptTurn
-from app.models.phase2 import Phase2Chunk, QuoteCandidate
+from app.models.phase2 import Phase2Chunk, QuoteCandidate, QuoteType
 from app.models.video import TranscriptSegment
 from app.worker.phase1.chunking import chunk_text_for_qwen
 
@@ -113,7 +113,7 @@ def _call_qwen(
     return _extract_json(content)
 
 
-_VALID_QUOTE_TYPES = {"headline", "substantive"}
+_VALID_QUOTE_TYPES = {QuoteType.headline.value, QuoteType.substantive.value}
 
 
 def _validate_candidates(raw: list, chunk_start: int, chunk_end: int) -> list[dict]:
@@ -128,7 +128,7 @@ def _validate_candidates(raw: list, chunk_start: int, chunk_end: int) -> list[di
         if start > end or start < chunk_start or end > chunk_end:
             continue
         raw_type = item.get("type")
-        quote_type = raw_type if raw_type in _VALID_QUOTE_TYPES else "substantive"
+        quote_type = QuoteType(raw_type) if raw_type in _VALID_QUOTE_TYPES else QuoteType.substantive
         valid.append({"start_segment_id": start, "end_segment_id": end, "quote_type": quote_type})
     return valid
 
@@ -230,7 +230,7 @@ def extract_phase2_chunk(
             narrative_alignment_score=score,
             is_notable_moment=matching_moment is not None,
             notable_moment_id=matching_moment.id if matching_moment else None,
-            raw_qwen_output={"candidates": raw_output},
+            raw_qwen_output=cand,
             discarded=False,
             discard_reason=None,
         )

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models.phase2 import Quote
+from app.models.phase2 import Quote, QuoteType
 from app.models.video import JobStatus, ProcessingPhase, ProcessingRun, Video
 from app.worker.transcription import transcribe_video
 from app.worker.phase1.extraction import unload_qwen_model
@@ -139,7 +139,7 @@ def run_worker():
                 headline_count = db.execute(
                     select(func.count(Quote.id))
                     .where(Quote.video_id == video.id)
-                    .where(Quote.quote_type == "headline")
+                    .where(Quote.quote_type == QuoteType.headline)
                 ).scalar() or 0
                 if headline_count == 0:
                     logger.info(
