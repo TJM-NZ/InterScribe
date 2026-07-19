@@ -110,10 +110,19 @@ def log_condensation_correction(
             if isinstance(body.corrected_value, dict)
             else None
         )
-        quote.headline_text = new_text
+        if new_text is not None:
+            quote.headline_text = new_text
     elif body.field_name == "quote_type":
         quote.quote_type = "substantive"
         quote.headline_text = None
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error(
+                f"Unknown field_name '{body.field_name}' for condensation correction",
+                "INVALID_FIELD_NAME",
+            ),
+        )
 
     correction = Correction(
         video_id=video_id,

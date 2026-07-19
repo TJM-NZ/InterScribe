@@ -180,8 +180,8 @@ def transcribe_video(video: Video, db: Session) -> None:
     try:
         probe = ffmpeg.probe(video.storage_path)
         video.duration_seconds = float(probe["format"]["duration"])
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("ffprobe failed for video %s — duration_seconds will be null: %s", video.id, exc)
 
     video.status = JobStatus.ready_for_review
     video.error_reason = None

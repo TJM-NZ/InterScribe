@@ -285,6 +285,12 @@ def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
         ).scalar_one_or_none()
         is not None
     )
+    has_quotes = (
+        db.execute(
+            select(Quote.id).where(Quote.video_id == video_id).limit(1)
+        ).scalar_one_or_none()
+        is not None
+    )
 
     if not has_segments:
         # Transcription failed — no derived data to clean
@@ -293,10 +299,13 @@ def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
         # Phase 1 failed — clean partial phase1 data (intermediate commits may have persisted rows)
         _clear_phase1_data(video_id, db)
         video.status = JobStatus.phase1_queued
-    else:
+    elif not has_quotes:
         # Phase 2 failed — clean partial phase2 data
         _clear_phase2_data(video_id, db)
         video.status = JobStatus.phase2_queued
+    else:
+        # Condensation failed — quote data is intact; re-queue condensation only
+        video.status = JobStatus.condensation_queued
 
     new_status = video.status
     video.error_reason = None
