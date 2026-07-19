@@ -40,7 +40,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     load();
   }, [id]);
 
-  const distinctSpeakers = [...new Set(segments.map((s) => s.speaker_label))].sort();
+  const distinctSpeakers = Array.from(new Set(segments.map((s) => s.speaker_label))).sort();
 
   const handleConfirm = async () => {
     setConfirming(true);
@@ -62,13 +62,6 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-lg font-semibold break-all">{video.original_filename}</h2>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {video.media_type} · {video.duration_seconds ? `${Math.round(video.duration_seconds / 60)} min` : "unknown duration"}
-        </p>
-      </div>
-
       <section>
         <h3 className="text-base font-medium mb-3">Speaker roles</h3>
         <SpeakerRoleForm

@@ -171,11 +171,6 @@ export default function Phase1ReviewPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-10">
-      <div>
-        <h2 className="text-lg font-semibold break-all">{video.original_filename}</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Phase 1 narrative review</p>
-      </div>
-
       <section>
         <h3 className="text-base font-medium mb-3">
           Narrative clusters
