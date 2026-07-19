@@ -1,11 +1,12 @@
 import logging
 import time
 from collections.abc import Callable
+from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database import SessionLocal
-from app.models.video import JobStatus, Video
+from app.models.video import JobStatus, ProcessingPhase, ProcessingRun, Video
 from app.worker.transcription import transcribe_video
 from app.worker.phase1.extraction import unload_qwen_model
 from app.worker.phase1.pipeline import process_phase1
@@ -53,22 +54,52 @@ def _run_pipeline(
     processing_status: JobStatus,
     pipeline_fn: Callable,
     label: str,
+    phase: ProcessingPhase,
     *,
     unload_gpu: bool = False,
 ) -> None:
     video.status = processing_status
     video.error_reason = None
+
+    max_run = db.execute(
+        select(func.max(ProcessingRun.run_number))
+        .where(ProcessingRun.video_id == video.id)
+        .where(ProcessingRun.phase == phase)
+    ).scalar() or 0
+    started_at = datetime.now(timezone.utc)
+    run = ProcessingRun(
+        video_id=video.id,
+        phase=phase,
+        run_number=max_run + 1,
+        started_at=started_at,
+    )
+    db.add(run)
+    run_id = run.id
     db.commit()
+
     try:
         pipeline_fn(video, db)
-        logger.info("%s complete for video %s", label, video.id)
+        completed_at = datetime.now(timezone.utc)
+        run.completed_at = completed_at
+        run.wall_seconds = (completed_at - started_at).total_seconds()
+        run.succeeded = True
+        db.commit()
+        logger.info("%s complete for video %s (%.1fs)", label, video.id, run.wall_seconds)
     except Exception as exc:
         db.rollback()
+        completed_at = datetime.now(timezone.utc)
         with SessionLocal() as err_db:
             v = err_db.get(Video, video.id)
             if v:
                 v.status = JobStatus.failed
                 v.error_reason = str(exc)[:500]
+                err_db.commit()
+            r = err_db.get(ProcessingRun, run_id)
+            if r:
+                r.completed_at = completed_at
+                r.wall_seconds = (completed_at - started_at).total_seconds()
+                r.succeeded = False
+                r.error_reason = str(exc)[:500]
                 err_db.commit()
         logger.error("%s failed for video %s: %s", label, video.id, exc)
     finally:
@@ -85,19 +116,19 @@ def run_worker():
             video = _pick_next(db, JobStatus.queued)
             if video is not None:
                 logger.info("Transcribing video %s (%s)", video.id, video.original_filename)
-                _run_pipeline(video, db, JobStatus.transcribing, transcribe_video, "Transcription")
+                _run_pipeline(video, db, JobStatus.transcribing, transcribe_video, "Transcription", ProcessingPhase.transcription)
                 continue
 
             video = _pick_next(db, JobStatus.phase1_queued)
             if video is not None:
                 logger.info("Phase 1 processing video %s (%s)", video.id, video.original_filename)
-                _run_pipeline(video, db, JobStatus.phase1_processing, process_phase1, "Phase 1", unload_gpu=True)
+                _run_pipeline(video, db, JobStatus.phase1_processing, process_phase1, "Phase 1", ProcessingPhase.phase1, unload_gpu=True)
                 continue
 
             video = _pick_next(db, JobStatus.phase2_queued)
             if video is not None:
                 logger.info("Phase 2 processing video %s (%s)", video.id, video.original_filename)
-                _run_pipeline(video, db, JobStatus.phase2_processing, process_phase2, "Phase 2", unload_gpu=True)
+                _run_pipeline(video, db, JobStatus.phase2_processing, process_phase2, "Phase 2", ProcessingPhase.phase2, unload_gpu=True)
                 continue
 
         time.sleep(POLL_INTERVAL)

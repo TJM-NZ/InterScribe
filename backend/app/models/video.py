@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, UUID
@@ -46,6 +46,12 @@ PHASE1_VIEWABLE_STATUSES = frozenset({
 PHASE2_VIEWABLE_STATUSES = frozenset({JobStatus.phase2_ready_for_review, JobStatus.phase2_reviewed})
 
 
+class ProcessingPhase(str, PyEnum):
+    transcription = "transcription"
+    phase1 = "phase1"
+    phase2 = "phase2"
+
+
 class SpeakerRole(str, PyEnum):
     interviewer = "interviewer"
     interviewee = "interviewee"
@@ -72,6 +78,9 @@ class Video(Base):
         back_populates="video", cascade="all, delete-orphan"
     )
     speaker_role_map: Mapped[list["SpeakerRoleMap"]] = relationship(
+        back_populates="video", cascade="all, delete-orphan"
+    )
+    processing_runs: Mapped[list["ProcessingRun"]] = relationship(
         back_populates="video", cascade="all, delete-orphan"
     )
 
@@ -111,3 +120,28 @@ class SpeakerRoleMap(Base):
     __table_args__ = (UniqueConstraint("video_id", "speaker_label", name="uq_video_speaker"),)
 
     video: Mapped["Video"] = relationship(back_populates="speaker_role_map")
+
+
+class ProcessingRun(Base):
+    __tablename__ = "processing_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    video_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    phase: Mapped[ProcessingPhase] = mapped_column(String, nullable=False)
+    run_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    wall_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    succeeded: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    error_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_processing_runs_video_id", "video_id"),
+        Index("ix_processing_runs_phase", "phase"),
+    )
+
+    video: Mapped["Video"] = relationship(back_populates="processing_runs")

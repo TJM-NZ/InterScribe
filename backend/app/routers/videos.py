@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,6 +11,8 @@ from app.models.phase1 import NarrativeCluster, TranscriptChunk, TranscriptTurn
 from app.models.phase2 import Phase2Chunk, Quote
 from app.models.video import (
     JobStatus,
+    ProcessingPhase,
+    ProcessingRun,
     SPEAKER_REVIEW_STATUSES,
     TRANSCRIPT_VIEWABLE_STATUSES,
     SpeakerRoleMap,
@@ -371,3 +373,69 @@ def rerun_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
     db.commit()
 
     return {"video_id": str(video_id), "status": JobStatus.queued.value}
+
+
+@router.get("/api/videos/{video_id}/runs")
+def get_video_runs(video_id: uuid.UUID, db: Session = Depends(get_db)):
+    get_video_or_404(video_id, db)
+    runs = db.execute(
+        select(ProcessingRun)
+        .where(ProcessingRun.video_id == video_id)
+        .order_by(ProcessingRun.started_at.asc())
+    ).scalars().all()
+    return {
+        "runs": [
+            {
+                "id": str(r.id),
+                "phase": r.phase,
+                "run_number": r.run_number,
+                "started_at": r.started_at.isoformat(),
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "wall_seconds": r.wall_seconds,
+                "succeeded": r.succeeded,
+                "error_reason": r.error_reason,
+            }
+            for r in runs
+        ]
+    }
+
+
+@router.get("/api/stats/timing")
+def get_timing_stats(db: Session = Depends(get_db)):
+    stats = {}
+    for phase in ProcessingPhase:
+        counts = db.execute(
+            select(
+                func.count().label("run_count"),
+                func.count().filter(ProcessingRun.succeeded == True).label("success_count"),
+            ).where(ProcessingRun.phase == phase)
+        ).one()
+
+        agg = db.execute(
+            select(
+                func.avg(ProcessingRun.wall_seconds).label("avg_wall_seconds"),
+                func.percentile_cont(0.5).within_group(ProcessingRun.wall_seconds.asc()).label("p50"),
+                func.percentile_cont(0.95).within_group(ProcessingRun.wall_seconds.asc()).label("p95"),
+                func.avg(
+                    ProcessingRun.wall_seconds / (Video.duration_seconds / 60.0)
+                ).label("avg_wall_per_audio_minute"),
+            )
+            .join(Video, ProcessingRun.video_id == Video.id)
+            .where(
+                ProcessingRun.phase == phase,
+                ProcessingRun.succeeded == True,
+                ProcessingRun.wall_seconds.isnot(None),
+                Video.duration_seconds.isnot(None),
+                Video.duration_seconds > 0,
+            )
+        ).one()
+
+        stats[phase.value] = {
+            "run_count": counts.run_count,
+            "success_count": counts.success_count,
+            "avg_wall_seconds": round(agg.avg_wall_seconds, 1) if agg.avg_wall_seconds is not None else None,
+            "avg_wall_per_audio_minute": round(agg.avg_wall_per_audio_minute, 2) if agg.avg_wall_per_audio_minute is not None else None,
+            "p50_wall_seconds": round(agg.p50, 1) if agg.p50 is not None else None,
+            "p95_wall_seconds": round(agg.p95, 1) if agg.p95 is not None else None,
+        }
+    return stats
