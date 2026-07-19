@@ -7,11 +7,12 @@ Flow: load turns → build overlapping Phase2Chunks → Qwen extraction per chun
 import logging
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.phase1 import ChunkTheme, NarrativeCluster, NotableMoment, TranscriptTurn
+from app.models.phase2 import Phase2Chunk, Quote
 from app.models.video import JobStatus, TranscriptSegment, Video
 from app.worker.phase1.clustering import load_embedding_model
 from app.worker.phase1.extraction import _pull_model_if_needed
@@ -87,6 +88,10 @@ def process_phase2(video: Video, db: Session) -> None:
     segments_by_id = {s.segment_id: s for s in segments}
 
     embedding_model = load_embedding_model()
+
+    db.execute(delete(Quote).where(Quote.video_id == video.id))
+    db.execute(delete(Phase2Chunk).where(Phase2Chunk.video_id == video.id))
+    db.commit()
 
     logger.info("Phase 2: building overlapping chunks for video %s", video.id)
     chunks, chunk_groups = build_phase2_chunks(

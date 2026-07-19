@@ -69,11 +69,19 @@ def _format_notable_moments_context(moments: list[NotableMoment]) -> str:
 
 
 def _extract_json(text: str) -> list:
+    original_len = len(text)
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     text = re.sub(r"^```(?:json)?\s*", "", text).strip()
     text = re.sub(r"\s*```$", "", text).strip()
-    result = json.loads(text)
-    return result if isinstance(result, list) else []
+    if not text:
+        logger.warning("Qwen returned empty content after stripping think/fence (raw length: %d)", original_len)
+        return []
+    try:
+        result = json.loads(text)
+        return result if isinstance(result, list) else []
+    except json.JSONDecodeError as exc:
+        logger.warning("JSON parse failed: %s — content: %.500s", exc, text)
+        raise
 
 
 def _call_qwen(
