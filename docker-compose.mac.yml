@@ -1,0 +1,7 @@
+services:
+  ollama:
+    # Disabled on Mac — run Ollama natively instead (see README)
+    profiles: [disabled]
+
+  worker:
+    deploy: {}
