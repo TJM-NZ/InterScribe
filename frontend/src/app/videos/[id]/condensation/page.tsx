@@ -7,14 +7,17 @@ import {
   extractApiError,
   formatTimestamp,
   getCondensationHeadlines,
+  getTranscript,
   getVideo,
   logCondensationCorrection,
   type Quote,
   type ReasonCategory,
+  type TranscriptSegment,
   type VideoStatus,
   type VideoSummary,
 } from "@/lib/api";
 import CorrectionModal from "@/components/CorrectionModal";
+import QuoteSegmentContext from "@/components/QuoteSegmentContext";
 
 type ModalState =
   | { kind: "edit-headline"; quote: Quote }
@@ -36,9 +39,10 @@ interface HeadlineCardProps {
   disabled: boolean;
   onEdit: (q: Quote) => void;
   onDowngrade: (q: Quote) => void;
+  segments: TranscriptSegment[];
 }
 
-function HeadlineCard({ quote, disabled, onEdit, onDowngrade }: HeadlineCardProps) {
+function HeadlineCard({ quote, disabled, onEdit, onDowngrade, segments }: HeadlineCardProps) {
   return (
     <div
       className="border border-gray-200 rounded-lg p-4 space-y-3 bg-white"
@@ -64,6 +68,11 @@ function HeadlineCard({ quote, disabled, onEdit, onDowngrade }: HeadlineCardProp
         <p className="text-sm text-gray-600 leading-relaxed" data-testid="verbatim-text">
           {quote.quote_text}
         </p>
+        <QuoteSegmentContext
+          segments={segments}
+          startSegmentId={quote.start_segment_id}
+          endSegmentId={quote.end_segment_id}
+        />
       </div>
 
       <div className="flex items-center gap-3 text-xs text-gray-400">
@@ -106,6 +115,7 @@ export default function CondensationReviewPage({
 
   const [video, setVideo] = useState<VideoSummary | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [modal, setModal] = useState<ModalState>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,12 +124,14 @@ export default function CondensationReviewPage({
   useEffect(() => {
     async function load() {
       try {
-        const [v, headlinesData] = await Promise.all([
+        const [v, headlinesData, transcriptData] = await Promise.all([
           getVideo(id),
           getCondensationHeadlines(id),
+          getTranscript(id),
         ]);
         setVideo(v);
         setQuotes(headlinesData.quotes);
+        setSegments(transcriptData.segments);
       } catch (err: unknown) {
         setError(extractApiError(err, "Failed to load headline review"));
       } finally {
@@ -218,6 +230,7 @@ export default function CondensationReviewPage({
                 disabled={isReviewed}
                 onEdit={(q) => setModal({ kind: "edit-headline", quote: q })}
                 onDowngrade={(q) => setModal({ kind: "downgrade", quote: q })}
+                segments={segments}
               />
             ))}
           </div>

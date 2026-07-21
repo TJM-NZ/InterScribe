@@ -8,16 +8,19 @@ import {
   formatTimestamp,
   getPhase1Narrative,
   getPhase2Quotes,
+  getTranscript,
   logPhase2Correction,
   type NotableMoment,
   type Quote,
   type QuoteType,
   type ReasonCategory,
+  type TranscriptSegment,
   type VideoStatus,
   type VideoSummary,
   getVideo,
 } from "@/lib/api";
 import CorrectionModal from "@/components/CorrectionModal";
+import QuoteSegmentContext from "@/components/QuoteSegmentContext";
 
 type ModalState =
   | { kind: "reject-quote"; quote: Quote }
@@ -44,9 +47,10 @@ interface QuoteCardProps {
   notableMoment: NotableMoment | null;
   disabled: boolean;
   onReject: (q: Quote) => void;
+  segments: TranscriptSegment[];
 }
 
-function QuoteCard({ quote, notableMoment, disabled, onReject }: QuoteCardProps) {
+function QuoteCard({ quote, notableMoment, disabled, onReject, segments }: QuoteCardProps) {
   return (
     <div
       className={`border rounded-lg p-4 space-y-2 ${
@@ -54,7 +58,13 @@ function QuoteCard({ quote, notableMoment, disabled, onReject }: QuoteCardProps)
       }`}
       data-testid="quote-card"
     >
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Verbatim quote</p>
       <p className="text-sm text-gray-800 leading-relaxed">{quote.quote_text}</p>
+      <QuoteSegmentContext
+        segments={segments}
+        startSegmentId={quote.start_segment_id}
+        endSegmentId={quote.end_segment_id}
+      />
       <div className="flex items-center gap-3 text-xs text-gray-500">
         <span>{quote.speaker_label}</span>
         <span>·</span>
@@ -124,6 +134,7 @@ export default function Phase2ReviewPage({ params }: { params: Promise<{ id: str
   const [video, setVideo] = useState<VideoSummary | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [notableMoments, setNotableMoments] = useState<NotableMoment[]>([]);
+  const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [modal, setModal] = useState<ModalState>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,14 +143,16 @@ export default function Phase2ReviewPage({ params }: { params: Promise<{ id: str
   useEffect(() => {
     async function load() {
       try {
-        const [v, quotesData, narrativeData] = await Promise.all([
+        const [v, quotesData, narrativeData, transcriptData] = await Promise.all([
           getVideo(id),
           getPhase2Quotes(id, "top"),
           getPhase1Narrative(id),
+          getTranscript(id),
         ]);
         setVideo(v);
         setQuotes(quotesData.quotes);
         setNotableMoments(narrativeData.notable_moments);
+        setSegments(transcriptData.segments);
       } catch (err: unknown) {
         setError(extractApiError(err, "Failed to load Phase 2 review"));
       } finally {
@@ -216,6 +229,7 @@ export default function Phase2ReviewPage({ params }: { params: Promise<{ id: str
                 notableMoment={quote.notable_moment_id ? (notableMomentMap.get(quote.notable_moment_id) ?? null) : null}
                 disabled={isReviewed}
                 onReject={(q) => setModal({ kind: "reject-quote", quote: q })}
+                segments={segments}
               />
             ))}
           </div>
@@ -240,6 +254,7 @@ export default function Phase2ReviewPage({ params }: { params: Promise<{ id: str
                 notableMoment={quote.notable_moment_id ? (notableMomentMap.get(quote.notable_moment_id) ?? null) : null}
                 disabled={isReviewed}
                 onReject={(q) => setModal({ kind: "reject-quote", quote: q })}
+                segments={segments}
               />
             ))}
           </div>
