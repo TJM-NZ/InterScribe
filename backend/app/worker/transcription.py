@@ -89,7 +89,7 @@ for _fn_name in ("hf_hub_download", "snapshot_download"):
             if getattr(_mod, _fn_name, None) is _orig:
                 setattr(_mod, _fn_name, _compat_fn)
         except Exception:
-            pass
+            pass  # C extensions may raise TypeError on setattr; skip them
 
 del _sys, _hf_hub, _fn_name, _orig, _compat_fn, _mod, _make_compat
 

@@ -246,7 +246,7 @@ def test_raw_qwen_output_stored_on_candidate(db):
         )
 
     for c in candidates:
-        assert "candidates" in c.raw_qwen_output
+        assert "start_segment_id" in c.raw_qwen_output
         assert c.discarded is False
         assert c.discard_reason is None
 

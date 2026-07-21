@@ -4,9 +4,11 @@ Flow: group segments → turns → chunks → Qwen extraction per chunk → clus
 """
 import logging
 
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.phase1 import NarrativeCluster, TranscriptChunk, TranscriptTurn
 from app.models.video import JobStatus, Video
 from app.worker.phase1.chunking import build_chunks, chunk_text_for_qwen
 from app.worker.phase1.clustering import cluster_themes, load_embedding_model
@@ -18,6 +20,13 @@ logger = logging.getLogger(__name__)
 
 def process_phase1(video: Video, db: Session) -> None:
     _pull_model_if_needed()
+
+    # Clear any partial Phase1 data from a previous interrupted run before starting.
+    # TranscriptChunk deletion cascades to ChunkNarrative, ChunkTheme, NotableMoment.
+    db.execute(delete(TranscriptTurn).where(TranscriptTurn.video_id == video.id))
+    db.execute(delete(TranscriptChunk).where(TranscriptChunk.video_id == video.id))
+    db.execute(delete(NarrativeCluster).where(NarrativeCluster.video_id == video.id))
+    db.commit()
 
     logger.info("Phase 1: grouping segments into turns for video %s", video.id)
     turns = build_turns(video.id, db)
