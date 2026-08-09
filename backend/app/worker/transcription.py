@@ -136,6 +136,13 @@ def transcribe_video(video: Video, db: Session) -> None:
     batch_size = settings.whisper_batch_size
     hf_token = settings.huggingface_token
 
+    # Pascal GPUs (compute < 7.0, e.g. 1080Ti) lack Tensor Cores — float16 is
+    # inefficient and ctranslate2 warns. Downgrade proactively to int8.
+    if device == "cuda" and compute_type == "float16":
+        import torch
+        if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 7:
+            compute_type = "int8"
+
     model = whisperx.load_model(
         settings.whisper_model_size,
         device=device,
