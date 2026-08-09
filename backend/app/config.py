@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://ollama:11434"
     qwen_model: str = "qwen3.5:9b"
 
-    # max tokens per chunk (D3 from Spec 2: fixed at 10,000)
     narrative_chunk_max_tokens: int = 10_000
     # agglomerative clustering cosine distance threshold
     narrative_cluster_threshold: float = 0.3
@@ -34,6 +33,8 @@ class Settings(BaseSettings):
     phase2_overlap_turns: int = 2
     phase2_dedup_overlap_ratio: float = 0.5
     phase2_dedup_text_similarity: float = 0.85
+
+    worker_poll_interval: int = 5
 
 
 settings = Settings()

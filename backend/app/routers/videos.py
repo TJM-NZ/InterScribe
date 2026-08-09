@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -30,7 +30,8 @@ router = APIRouter()
 
 
 @router.get("/health")
-def health():
+def health(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
     return {"status": "ok"}
 
 
@@ -50,6 +51,7 @@ def list_videos(db: Session = Depends(get_db)):
                 "duration_seconds": v.duration_seconds,
                 "original_filename": v.original_filename,
                 "media_type": v.media_type,
+                "alignment_skipped": v.alignment_skipped,
                 "uploaded_at": v.uploaded_at.isoformat(),
             }
             for v in videos
@@ -65,6 +67,8 @@ def upload_video(file: UploadFile, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=api_error(str(exc), "UNSUPPORTED_MEDIA_TYPE"))
     except (FileTooLargeError, DurationExceededError) as exc:
         raise HTTPException(status_code=413, detail=api_error(str(exc), "FILE_TOO_LARGE"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=api_error(f"Upload failed: {exc}", "UPLOAD_FAILED"))
 
     video = Video(
         original_filename=file.filename or "upload",
@@ -99,6 +103,7 @@ def get_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
         "duration_seconds": video.duration_seconds,
         "original_filename": video.original_filename,
         "media_type": video.media_type,
+        "alignment_skipped": video.alignment_skipped,
         "uploaded_at": video.uploaded_at.isoformat(),
     }
 
@@ -273,38 +278,25 @@ def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
             detail=api_error("Video is not in failed status", "NOT_FAILED"),
         )
 
-    has_segments = (
-        db.execute(
-            select(TranscriptSegment.id).where(TranscriptSegment.video_id == video_id).limit(1)
-        ).scalar_one_or_none()
-        is not None
-    )
-    has_clusters = (
-        db.execute(
-            select(NarrativeCluster.id).where(NarrativeCluster.video_id == video_id).limit(1)
-        ).scalar_one_or_none()
-        is not None
-    )
-    has_quotes = (
-        db.execute(
-            select(Quote.id).where(Quote.video_id == video_id).limit(1)
-        ).scalar_one_or_none()
-        is not None
-    )
+    last_failed = db.execute(
+        select(ProcessingRun)
+        .where(
+            ProcessingRun.video_id == video_id,
+            ProcessingRun.succeeded.is_(False),
+        )
+        .order_by(ProcessingRun.started_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
 
-    if not has_segments:
-        # Transcription failed — no derived data to clean
+    if last_failed is None or last_failed.phase == ProcessingPhase.transcription:
         video.status = JobStatus.queued
-    elif not has_clusters:
-        # Phase 1 failed — clean partial phase1 data (intermediate commits may have persisted rows)
+    elif last_failed.phase == ProcessingPhase.phase1:
         _clear_phase1_data(video_id, db)
         video.status = JobStatus.phase1_queued
-    elif not has_quotes:
-        # Phase 2 failed — clean partial phase2 data
+    elif last_failed.phase == ProcessingPhase.phase2:
         _clear_phase2_data(video_id, db)
         video.status = JobStatus.phase2_queued
     else:
-        # Condensation failed — quote data is intact; re-queue condensation only
         video.status = JobStatus.condensation_queued
 
     new_status = video.status

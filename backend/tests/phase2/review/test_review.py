@@ -67,24 +67,23 @@ def test_get_quotes_top_with_limit_returns_limited(client, db):
     assert len(resp.json()["quotes"]) == 2
 
 
-def test_get_quotes_invalid_view_returns_400(client, db):
+def test_get_quotes_invalid_view_returns_422(client, db):
     v = make_video(db, status=JobStatus.phase2_ready_for_review)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes?view=invalid")
 
-    assert resp.status_code == 400
+    assert resp.status_code == 422
     assert resp.json()["detail"]["code"] == "INVALID_VIEW"
 
 
-def test_get_quotes_missing_view_returns_400(client, db):
+def test_get_quotes_missing_view_returns_422(client, db):
     v = make_video(db, status=JobStatus.phase2_ready_for_review)
     db.commit()
 
     resp = client.get(f"/api/videos/{v.id}/phase2/quotes")
 
-    assert resp.status_code == 400
-    assert resp.json()["detail"]["code"] == "INVALID_VIEW"
+    assert resp.status_code == 422
 
 
 def test_get_quotes_status_not_ready_returns_409(client, db):

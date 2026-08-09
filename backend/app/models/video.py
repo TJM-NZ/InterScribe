@@ -86,6 +86,7 @@ class Video(Base):
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     status: Mapped[JobStatus] = mapped_column(String, nullable=False, default=JobStatus.uploaded)
     error_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    alignment_skipped: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     uploaded_at: Mapped[datetime] = mapped_column(
         nullable=False, default=lambda: datetime.now(timezone.utc)
     )

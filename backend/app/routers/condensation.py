@@ -95,7 +95,7 @@ def log_condensation_correction(
         )
 
     quote = db.get(Quote, body.entity_id)
-    if not quote or quote.video_id != video_id or quote.quote_type != QuoteType.headline:
+    if not quote or quote.video_id != video_id:
         raise HTTPException(
             status_code=400,
             detail=api_error(

@@ -126,11 +126,6 @@ def _compute_confidence(segment: dict) -> float:
 
 
 def transcribe_video(video: Video, db: Session) -> None:
-    """
-    Run the full WhisperX pipeline:
-      VAD (built-in via pyannote) → transcription → alignment → diarization
-    Writes TranscriptSegment rows and updates video.status.
-    """
     device = settings.whisper_device
     compute_type = settings.whisper_compute_type
     batch_size = settings.whisper_batch_size
@@ -173,6 +168,7 @@ def transcribe_video(video: Video, db: Session) -> None:
             "No alignment model for language '%s', using raw transcription segments: %s",
             language, exc,
         )
+        video.alignment_skipped = True
 
     diarize_model = whisperx.DiarizationPipeline(device=device)
     diarize_segments = diarize_model(audio)

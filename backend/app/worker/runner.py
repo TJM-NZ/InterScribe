@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
+from app.config import settings
 from app.database import SessionLocal
 from app.models.phase2 import Quote, QuoteType
 from app.models.video import JobStatus, ProcessingPhase, ProcessingRun, Video
@@ -17,7 +18,6 @@ from app.worker.condensation.pipeline import process_condensation
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL = 5
 
 _STUCK_STATES = {
     JobStatus.transcribing: JobStatus.queued,
@@ -176,7 +176,7 @@ def run_worker():
                     )
                 continue
 
-        time.sleep(POLL_INTERVAL)
+        time.sleep(settings.worker_poll_interval)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ router = APIRouter()
 @router.get("/api/videos/{video_id}/phase2/quotes")
 def get_phase2_quotes(
     video_id: uuid.UUID,
-    view: str | None = Query(None),
+    view: str = Query(...),
     limit: int | None = Query(None),
     type: str | None = Query(None),
     db: Session = Depends(get_db),
@@ -37,7 +37,7 @@ def get_phase2_quotes(
 
     if view not in ("notable", "top"):
         raise HTTPException(
-            status_code=400,
+            status_code=422,
             detail=api_error("view must be 'notable' or 'top'", "INVALID_VIEW"),
         )
 
