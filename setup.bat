@@ -85,20 +85,22 @@ if (Test-Path '.env') {
     Copy-Item '.env.example' '.env'
 
     Write-Host ""
-    Write-Host "HuggingFace token required for speaker diarization."
-    Write-Host "  1. Create account:  https://huggingface.co/join"
-    Write-Host "  2. Accept license:  https://huggingface.co/pyannote/speaker-diarization-3.1"
-    Write-Host "  3. Accept license:  https://huggingface.co/pyannote/segmentation-3.0"
-    Write-Host "  4. Generate token:  https://huggingface.co/settings/tokens  (read access only)"
+    Write-Host "Speaker diarization uses pyannote — a one-time setup on HuggingFace is required."
+    Write-Host "  1. Create a free account (or log in): https://huggingface.co/join"
+    Write-Host "  2. Accept license: https://huggingface.co/pyannote/speaker-diarization-3.1"
+    Write-Host "  3. Accept license: https://huggingface.co/pyannote/segmentation-3.0"
+    Write-Host "  4. Generate a read token: https://huggingface.co/settings/tokens"
+    Write-Host ""
+    Write-Host "The token is used once to download the models during build — it is NOT stored in .env."
     Write-Host ""
     $hfToken = Read-Host "Enter your HuggingFace token"
+    $env:HF_TOKEN = $hfToken
 
     $pg = -join ((48..57) + (97..102) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
 
     $c = Get-Content '.env' -Raw
     $c = $c.Replace('POSTGRES_PASSWORD=changeme', "POSTGRES_PASSWORD=$pg")
     $c = $c.Replace('DATABASE_URL=postgresql://interscribe:changeme@postgres:5432/interscribe', "DATABASE_URL=postgresql://interscribe:$pg@postgres:5432/interscribe")
-    $c = $c.Replace('HUGGINGFACE_TOKEN=hf_your_token_here', "HUGGINGFACE_TOKEN=$hfToken")
     $c = $c.Replace('WHISPER_DEVICE=cuda', 'WHISPER_DEVICE=cpu')
     $c = $c.Replace('WHISPER_COMPUTE_TYPE=float16', 'WHISPER_COMPUTE_TYPE=int8')
     $c = $c.Replace('WHISPER_MODEL_SIZE=large-v2', 'WHISPER_MODEL_SIZE=small')
@@ -114,9 +116,11 @@ if (Test-Path '.env') {
 # ── Build and start containers ────────────────────────────────────────────────
 Write-Host ""
 Write-Host "Building and starting containers (this may take several minutes on first run)..."
+Write-Host "Pyannote models (~150 MB) will be downloaded during build..."
 # docker-compose.mac.yml disables the ollama Docker container — on Windows,
 # Ollama runs natively (same as Mac) and is reached via host.docker.internal
 docker compose -f docker-compose.yml -f docker-compose.mac.yml up --build -d
+$env:HF_TOKEN = $null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Docker Compose failed. See errors above."
     Read-Host "Press Enter to exit"

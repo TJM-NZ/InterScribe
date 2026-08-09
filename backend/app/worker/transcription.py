@@ -134,7 +134,6 @@ def transcribe_video(video: Video, db: Session) -> None:
     device = settings.whisper_device
     compute_type = settings.whisper_compute_type
     batch_size = settings.whisper_batch_size
-    hf_token = settings.huggingface_token
 
     # Pascal GPUs (compute < 7.0, e.g. 1080Ti) lack Tensor Cores — float16 is
     # inefficient and ctranslate2 warns. Downgrade proactively to int8.
@@ -169,9 +168,7 @@ def transcribe_video(video: Video, db: Session) -> None:
             language, exc,
         )
 
-    diarize_model = whisperx.DiarizationPipeline(
-        use_auth_token=hf_token, device=device
-    )
+    diarize_model = whisperx.DiarizationPipeline(device=device)
     diarize_segments = diarize_model(audio)
 
     result = whisperx.assign_word_speakers(diarize_segments, result)

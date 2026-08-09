@@ -14,7 +14,10 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      secrets:
+        - hf_token
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
@@ -46,13 +49,15 @@ services:
               capabilities: [gpu]
 
   worker:
-    build: ./backend
+    build:
+      context: ./backend
+      secrets:
+        - hf_token
     command: python -m app.worker.runner
     env_file: .env
     volumes:
       - upload_storage:${UPLOAD_STORAGE_PATH}
       - whisper_models:${WHISPER_MODEL_CACHE}
-      - hf_cache:${HF_HOME}
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,5 +85,8 @@ volumes:
   postgres_data:
   upload_storage:
   whisper_models:
-  hf_cache:
   ollama_models:
+
+secrets:
+  hf_token:
+    environment: HF_TOKEN

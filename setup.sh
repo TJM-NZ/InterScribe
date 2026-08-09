@@ -90,19 +90,20 @@ else
     cp .env.example .env
 
     echo ""
-    echo "HuggingFace token required for speaker diarization."
-    echo "  1. Create an account at https://huggingface.co/join"
-    echo "  2. Accept the license at https://huggingface.co/pyannote/speaker-diarization-3.1"
-    echo "  3. Accept the license at https://huggingface.co/pyannote/segmentation-3.0"
-    echo "  4. Generate a token at https://huggingface.co/settings/tokens (read access)"
+    echo "Speaker diarization uses pyannote — a one-time setup on HuggingFace is required."
+    echo "  1. Create a free account (or log in): https://huggingface.co/join"
+    echo "  2. Accept license: https://huggingface.co/pyannote/speaker-diarization-3.1"
+    echo "  3. Accept license: https://huggingface.co/pyannote/segmentation-3.0"
+    echo "  4. Generate a read token: https://huggingface.co/settings/tokens"
+    echo ""
+    echo "The token is used once to download the models during build — it is NOT stored in .env."
     echo ""
     read -rp "Enter your HuggingFace token: " HF_TOKEN
+    export HF_TOKEN
 
     PG_PASSWORD=$(python3 -c "import secrets; print(secrets.token_hex(16))")
 
     python3 - <<PYEOF
-import re
-
 with open('.env') as f:
     env = f.read()
 
@@ -111,7 +112,6 @@ env = env.replace(
     'DATABASE_URL=postgresql://interscribe:changeme@postgres:5432/interscribe',
     'DATABASE_URL=postgresql://interscribe:${PG_PASSWORD}@postgres:5432/interscribe'
 )
-env = env.replace('HUGGINGFACE_TOKEN=hf_your_token_here', 'HUGGINGFACE_TOKEN=${HF_TOKEN}')
 
 if '${OS}' == 'mac':
     env = env.replace('WHISPER_DEVICE=cuda', 'WHISPER_DEVICE=cpu')
@@ -129,11 +129,13 @@ fi
 # ── Start stack ────────────────────────────────────────────────────────────────
 echo ""
 echo "Building and starting containers (this may take a few minutes on first run)..."
+echo "Pyannote models (~150 MB) will be downloaded during build..."
 if [[ "$OS" == "mac" ]]; then
     docker compose -f docker-compose.yml -f docker-compose.mac.yml up --build -d
 else
     docker compose up --build -d
 fi
+unset HF_TOKEN
 
 # ── Pull Qwen model ────────────────────────────────────────────────────────────
 echo ""
