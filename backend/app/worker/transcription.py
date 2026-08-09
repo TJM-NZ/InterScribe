@@ -153,6 +153,9 @@ def transcribe_video(video: Video, db: Session) -> None:
 
     result = model.transcribe(audio, batch_size=batch_size)
     language = result.get("language", "en")
+    del model
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     try:
         align_model, metadata = whisperx.load_align_model(
@@ -162,6 +165,9 @@ def transcribe_video(video: Video, db: Session) -> None:
             result["segments"], align_model, metadata, audio, device,
             return_char_alignments=False,
         )
+        del align_model, metadata
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
     except Exception as exc:
         logger.warning(
             "No alignment model for language '%s', using raw transcription segments: %s",
@@ -170,6 +176,9 @@ def transcribe_video(video: Video, db: Session) -> None:
 
     diarize_model = whisperx.DiarizationPipeline(device=device)
     diarize_segments = diarize_model(audio)
+    del diarize_model
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     result = whisperx.assign_word_speakers(diarize_segments, result)
 
@@ -201,7 +210,3 @@ def transcribe_video(video: Video, db: Session) -> None:
     video.status = JobStatus.ready_for_review
     video.error_reason = None
     db.commit()
-
-    # Release GPU memory before the next job
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
