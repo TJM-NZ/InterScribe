@@ -188,12 +188,14 @@ def assign_speakers(
 
         if existing:
             existing.role = assignment.role
+            existing.name = assignment.name
         else:
             db.add(
                 SpeakerRoleMap(
                     video_id=video_id,
                     speaker_label=assignment.speaker_label,
                     role=assignment.role,
+                    name=assignment.name,
                 )
             )
 
@@ -209,7 +211,7 @@ def assign_speakers(
     return {
         "video_id": str(video_id),
         "speaker_role_map": [
-            {"id": str(r.id), "video_id": str(r.video_id), "speaker_label": r.speaker_label, "role": r.role}
+            {"id": str(r.id), "video_id": str(r.video_id), "speaker_label": r.speaker_label, "role": r.role, "name": r.name}
             for r in role_map
         ],
     }

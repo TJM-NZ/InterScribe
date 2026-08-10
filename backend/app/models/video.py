@@ -133,6 +133,7 @@ class SpeakerRoleMap(Base):
     )
     speaker_label: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[SpeakerRole] = mapped_column(String, nullable=False)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (UniqueConstraint("video_id", "speaker_label", name="uq_video_speaker"),)
 

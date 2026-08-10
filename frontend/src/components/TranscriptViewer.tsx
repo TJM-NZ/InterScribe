@@ -7,9 +7,10 @@ const LOW_CONFIDENCE_THRESHOLD = 0.7;
 interface Props {
   segments: TranscriptSegment[];
   speakerRoles?: Record<string, string>;
+  speakerNames?: Record<string, string>;
 }
 
-export default function TranscriptViewer({ segments, speakerRoles = {} }: Props) {
+export default function TranscriptViewer({ segments, speakerRoles = {}, speakerNames = {} }: Props) {
   if (segments.length === 0) {
     return <p className="text-gray-400 text-sm">No transcript segments found.</p>;
   }
@@ -20,6 +21,8 @@ export default function TranscriptViewer({ segments, speakerRoles = {} }: Props)
         const isLowConfidence = seg.confidence < LOW_CONFIDENCE_THRESHOLD;
         const isRepetition = seg.repetition_flagged;
         const roleName = speakerRoles[seg.speaker_label];
+        const speakerName = speakerNames[seg.speaker_label];
+        const displayLabel = speakerName || seg.speaker_label;
 
         return (
           <div
@@ -34,7 +37,7 @@ export default function TranscriptViewer({ segments, speakerRoles = {} }: Props)
                 {formatTimestamp(seg.start_ts)}
               </span>
               <span className="text-xs font-medium text-gray-500">
-                {seg.speaker_label}
+                {displayLabel}
                 {roleName ? ` (${roleName})` : ""}
               </span>
               {isLowConfidence && (

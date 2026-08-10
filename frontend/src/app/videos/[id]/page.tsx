@@ -21,6 +21,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [video, setVideo] = useState<VideoSummary | null>(null);
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
   const [speakerRoles, setSpeakerRoles] = useState<Record<string, SpeakerRole>>({});
+  const [speakerNames, setSpeakerNames] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +69,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
           videoId={id}
           speakerLabels={distinctSpeakers}
           initialRoles={speakerRoles}
-          onSaved={(roles) => setSpeakerRoles(roles)}
+          initialNames={speakerNames}
+          onSaved={(roles, names) => {
+            setSpeakerRoles(roles);
+            setSpeakerNames(names);
+          }}
         />
       </section>
 
@@ -79,7 +84,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             Segments highlighted in amber have low transcription confidence (&lt;70%)
           </span>
         </h3>
-        <TranscriptViewer segments={segments} speakerRoles={speakerRoles} />
+        <TranscriptViewer segments={segments} speakerRoles={speakerRoles} speakerNames={speakerNames} />
       </section>
 
       <div className="border-t border-gray-200 pt-6">

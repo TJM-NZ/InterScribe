@@ -19,6 +19,7 @@ class CorrectionRequest(BaseModel):
 class SpeakerAssignment(BaseModel):
     speaker_label: str
     role: SpeakerRole
+    name: str | None = None
 
 
 class SpeakerAssignmentsRequest(BaseModel):

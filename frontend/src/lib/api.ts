@@ -56,6 +56,7 @@ export interface SpeakerRoleEntry {
   video_id: string;
   speaker_label: string;
   role: "interviewer" | "interviewee" | "unknown";
+  name: string | null;
 }
 
 export type SpeakerRole = "interviewer" | "interviewee" | "unknown";
@@ -140,7 +141,7 @@ export async function getTranscript(id: string): Promise<{ segments: TranscriptS
 
 export async function assignSpeakers(
   id: string,
-  assignments: { speaker_label: string; role: SpeakerRole }[]
+  assignments: { speaker_label: string; role: SpeakerRole; name?: string | null }[]
 ): Promise<{ video_id: string; speaker_role_map: SpeakerRoleEntry[] }> {
   const res = await fetch(`${API_BASE}/api/videos/${id}/speakers`, {
     method: "PATCH",
