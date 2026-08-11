@@ -79,7 +79,7 @@ export interface NotableMoment {
   reviewed: boolean;
 }
 
-export type CorrectionEntityType = "narrative_cluster" | "notable_moment" | "quote" | "headline_condensation";
+export type CorrectionEntityType = "transcript_segment" | "narrative_cluster" | "notable_moment" | "quote" | "headline_condensation";
 
 export type ReasonCategory =
   | "model_error"
@@ -160,6 +160,24 @@ export async function confirmReview(id: string): Promise<{ video_id: string; sta
 
 export async function getPhase1Narrative(id: string): Promise<Phase1Narrative> {
   const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/narrative`);
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
+export async function logTranscriptCorrection(
+  videoId: string,
+  payload: {
+    segment_id: string;
+    corrected_text: string;
+    reason_category: ReasonCategory;
+    reason_note: string | null;
+  }
+): Promise<{ correction_id: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${videoId}/transcript/corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   if (!res.ok) throw await res.json();
   return res.json();
 }

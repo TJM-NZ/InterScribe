@@ -16,6 +16,13 @@ class CorrectionRequest(BaseModel):
     reason_note: str | None = None
 
 
+class TranscriptCorrectionRequest(BaseModel):
+    segment_id: uuid.UUID
+    corrected_text: str
+    reason_category: ReasonCategory
+    reason_note: str | None = None
+
+
 class SpeakerAssignment(BaseModel):
     speaker_label: str
     role: SpeakerRole

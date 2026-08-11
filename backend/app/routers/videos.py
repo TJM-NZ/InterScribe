@@ -6,8 +6,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import api_error, get_video_or_404
-from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest
-from app.models.phase1 import NarrativeCluster, TranscriptChunk, TranscriptTurn
+from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest
+from app.models.phase1 import (
+    Correction,
+    CorrectionEntityType,
+    CorrectionStage,
+    NarrativeCluster,
+    TranscriptChunk,
+    TranscriptTurn,
+)
 from app.models.phase2 import Phase2Chunk, Quote
 from app.models.video import (
     JobStatus,
@@ -401,6 +408,53 @@ def get_video_runs(video_id: uuid.UUID, db: Session = Depends(get_db)):
             for r in runs
         ]
     }
+
+
+@router.post("/api/videos/{video_id}/transcript/corrections", status_code=201)
+def correct_transcript_segment(
+    video_id: uuid.UUID,
+    body: TranscriptCorrectionRequest,
+    db: Session = Depends(get_db),
+):
+    video = get_video_or_404(video_id, db)
+
+    if video.status not in TRANSCRIPT_VIEWABLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error("Transcript not yet available", "TRANSCRIPT_NOT_READY"),
+        )
+
+    segment = db.execute(
+        select(TranscriptSegment).where(
+            TranscriptSegment.id == body.segment_id,
+            TranscriptSegment.video_id == video_id,
+        )
+    ).scalar_one_or_none()
+
+    if segment is None:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Segment not found", "SEGMENT_NOT_FOUND"),
+        )
+
+    original_text = segment.text
+    segment.text = body.corrected_text
+
+    correction = Correction(
+        video_id=video_id,
+        stage=CorrectionStage.transcription,
+        entity_type=CorrectionEntityType.transcript_segment,
+        entity_id=body.segment_id,
+        field_name="text",
+        original_value={"text": original_text},
+        corrected_value={"text": body.corrected_text},
+        reason_category=body.reason_category,
+        reason_note=body.reason_note,
+    )
+    db.add(correction)
+    db.commit()
+
+    return {"correction_id": str(correction.id)}
 
 
 @router.get("/api/stats/timing")
