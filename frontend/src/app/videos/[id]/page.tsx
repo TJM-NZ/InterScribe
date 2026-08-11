@@ -84,7 +84,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             Segments highlighted in amber have low transcription confidence (&lt;70%)
           </span>
         </h3>
-        <TranscriptViewer segments={segments} speakerRoles={speakerRoles} speakerNames={speakerNames} videoId={video.status === "ready_for_review" ? id : undefined} />
+        <TranscriptViewer segments={segments} speakerRoles={speakerRoles} speakerNames={speakerNames} videoId={video.status === "ready_for_review" ? id : undefined} speakerLabels={video.status === "ready_for_review" ? distinctSpeakers : undefined} />
       </section>
 
       <div className="border-t border-gray-200 pt-6">

@@ -23,6 +23,13 @@ class TranscriptCorrectionRequest(BaseModel):
     reason_note: str | None = None
 
 
+class TranscriptSpeakerCorrectionRequest(BaseModel):
+    segment_id: uuid.UUID
+    corrected_speaker_label: str
+    reason_category: ReasonCategory
+    reason_note: str | None = None
+
+
 class SpeakerAssignment(BaseModel):
     speaker_label: str
     role: SpeakerRole

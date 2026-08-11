@@ -182,6 +182,24 @@ export async function logTranscriptCorrection(
   return res.json();
 }
 
+export async function logTranscriptSpeakerCorrection(
+  videoId: string,
+  payload: {
+    segment_id: string;
+    corrected_speaker_label: string;
+    reason_category: ReasonCategory;
+    reason_note: string | null;
+  }
+): Promise<{ correction_id: string }> {
+  const res = await fetch(`${API_BASE}/api/videos/${videoId}/transcript/speaker-corrections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
 export async function logCorrection(
   videoId: string,
   payload: {

@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { formatTimestamp, logTranscriptCorrection, type ReasonCategory, type TranscriptSegment } from "@/lib/api";
+import {
+  formatTimestamp,
+  logTranscriptCorrection,
+  logTranscriptSpeakerCorrection,
+  type ReasonCategory,
+  type TranscriptSegment,
+} from "@/lib/api";
 import CorrectionModal from "@/components/CorrectionModal";
 
 const LOW_CONFIDENCE_THRESHOLD = 0.7;
@@ -11,17 +17,26 @@ interface Props {
   speakerRoles?: Record<string, string>;
   speakerNames?: Record<string, string>;
   videoId?: string;
+  speakerLabels?: string[];
 }
 
-export default function TranscriptViewer({ segments: initialSegments, speakerRoles = {}, speakerNames = {}, videoId }: Props) {
+type CorrectingMode = { seg: TranscriptSegment; mode: "text" } | { seg: TranscriptSegment; mode: "speaker" };
+
+export default function TranscriptViewer({
+  segments: initialSegments,
+  speakerRoles = {},
+  speakerNames = {},
+  videoId,
+  speakerLabels = [],
+}: Props) {
   const [segments, setSegments] = useState(initialSegments);
-  const [correcting, setCorrecting] = useState<TranscriptSegment | null>(null);
+  const [correcting, setCorrecting] = useState<CorrectingMode | null>(null);
 
   if (segments.length === 0) {
     return <p className="text-gray-400 text-sm">No transcript segments found.</p>;
   }
 
-  const handleCorrectionSubmit = async ({
+  const handleTextCorrectionSubmit = async ({
     correctedValue,
     reasonCategory,
     reasonNote,
@@ -32,13 +47,34 @@ export default function TranscriptViewer({ segments: initialSegments, speakerRol
   }) => {
     if (!correcting || !videoId || correctedValue === null) return;
     await logTranscriptCorrection(videoId, {
-      segment_id: correcting.id,
+      segment_id: correcting.seg.id,
       corrected_text: correctedValue,
       reason_category: reasonCategory,
       reason_note: reasonNote || null,
     });
     setSegments((prev) =>
-      prev.map((s) => (s.id === correcting.id ? { ...s, text: correctedValue } : s))
+      prev.map((s) => (s.id === correcting.seg.id ? { ...s, text: correctedValue } : s))
+    );
+  };
+
+  const handleSpeakerCorrectionSubmit = async ({
+    correctedValue,
+    reasonCategory,
+    reasonNote,
+  }: {
+    correctedValue: string | null;
+    reasonCategory: ReasonCategory;
+    reasonNote: string;
+  }) => {
+    if (!correcting || !videoId || correctedValue === null) return;
+    await logTranscriptSpeakerCorrection(videoId, {
+      segment_id: correcting.seg.id,
+      corrected_speaker_label: correctedValue,
+      reason_category: reasonCategory,
+      reason_note: reasonNote || null,
+    });
+    setSegments((prev) =>
+      prev.map((s) => (s.id === correcting.seg.id ? { ...s, speaker_label: correctedValue } : s))
     );
   };
 
@@ -51,6 +87,7 @@ export default function TranscriptViewer({ segments: initialSegments, speakerRol
           const roleName = speakerRoles[seg.speaker_label];
           const speakerName = speakerNames[seg.speaker_label];
           const displayLabel = speakerName || seg.speaker_label;
+          const otherSpeakers = speakerLabels.filter((l) => l !== seg.speaker_label);
 
           return (
             <div
@@ -86,13 +123,24 @@ export default function TranscriptViewer({ segments: initialSegments, speakerRol
                   </span>
                 )}
                 {videoId && (
-                  <button
-                    onClick={() => setCorrecting(seg)}
-                    className="ml-auto text-xs text-gray-400 hover:text-indigo-600"
-                    data-testid="correct-segment-button"
-                  >
-                    Correct
-                  </button>
+                  <span className="ml-auto flex gap-2">
+                    {otherSpeakers.length > 0 && (
+                      <button
+                        onClick={() => setCorrecting({ seg, mode: "speaker" })}
+                        className="text-xs text-gray-400 hover:text-indigo-600"
+                        data-testid="correct-speaker-button"
+                      >
+                        Wrong speaker
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setCorrecting({ seg, mode: "text" })}
+                      className="text-xs text-gray-400 hover:text-indigo-600"
+                      data-testid="correct-segment-button"
+                    >
+                      Correct
+                    </button>
+                  </span>
                 )}
               </div>
               <p className="text-gray-800">{seg.text}</p>
@@ -101,12 +149,23 @@ export default function TranscriptViewer({ segments: initialSegments, speakerRol
         })}
       </div>
 
-      {correcting && (
+      {correcting?.mode === "text" && (
         <CorrectionModal
-          title={`Correct segment at ${formatTimestamp(correcting.start_ts)}`}
+          title={`Correct transcript at ${formatTimestamp(correcting.seg.start_ts)}`}
           editMode={true}
-          currentValue={correcting.text}
-          onSubmit={handleCorrectionSubmit}
+          currentValue={correcting.seg.text}
+          onSubmit={handleTextCorrectionSubmit}
+          onClose={() => setCorrecting(null)}
+        />
+      )}
+
+      {correcting?.mode === "speaker" && (
+        <CorrectionModal
+          title={`Correct speaker at ${formatTimestamp(correcting.seg.start_ts)}`}
+          editMode={true}
+          currentValue={speakerLabels.filter((l) => l !== correcting.seg.speaker_label)[0] ?? ""}
+          selectOptions={speakerLabels.filter((l) => l !== correcting.seg.speaker_label)}
+          onSubmit={handleSpeakerCorrectionSubmit}
           onClose={() => setCorrecting(null)}
         />
       )}

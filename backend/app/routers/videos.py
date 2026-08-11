@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import api_error, get_video_or_404
-from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest
+from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest, TranscriptSpeakerCorrectionRequest
 from app.models.phase1 import (
     Correction,
     CorrectionEntityType,
@@ -448,6 +448,71 @@ def correct_transcript_segment(
         field_name="text",
         original_value={"text": original_text},
         corrected_value={"text": body.corrected_text},
+        reason_category=body.reason_category,
+        reason_note=body.reason_note,
+    )
+    db.add(correction)
+    db.commit()
+
+    return {"correction_id": str(correction.id)}
+
+
+@router.post("/api/videos/{video_id}/transcript/speaker-corrections", status_code=201)
+def correct_transcript_speaker(
+    video_id: uuid.UUID,
+    body: TranscriptSpeakerCorrectionRequest,
+    db: Session = Depends(get_db),
+):
+    video = get_video_or_404(video_id, db)
+
+    if video.status not in TRANSCRIPT_VIEWABLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error("Transcript not yet available", "TRANSCRIPT_NOT_READY"),
+        )
+
+    known_labels = {
+        row[0]
+        for row in db.execute(
+            select(TranscriptSegment.speaker_label)
+            .where(TranscriptSegment.video_id == video_id)
+            .distinct()
+        ).all()
+    }
+
+    if body.corrected_speaker_label not in known_labels:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error(
+                f"Unknown speaker_label: {body.corrected_speaker_label}",
+                "UNKNOWN_SPEAKER_LABEL",
+            ),
+        )
+
+    segment = db.execute(
+        select(TranscriptSegment).where(
+            TranscriptSegment.id == body.segment_id,
+            TranscriptSegment.video_id == video_id,
+        )
+    ).scalar_one_or_none()
+
+    if segment is None:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Segment not found", "SEGMENT_NOT_FOUND"),
+        )
+
+    original_label = segment.speaker_label
+    segment.speaker_label = body.corrected_speaker_label
+
+    correction = Correction(
+        video_id=video_id,
+        stage=CorrectionStage.transcription,
+        entity_type=CorrectionEntityType.transcript_segment,
+        entity_id=body.segment_id,
+        field_name="speaker_label",
+        original_value={"speaker_label": original_label},
+        corrected_value={"speaker_label": body.corrected_speaker_label},
         reason_category=body.reason_category,
         reason_note=body.reason_note,
     )

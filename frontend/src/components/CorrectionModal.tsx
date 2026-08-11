@@ -14,6 +14,7 @@ interface Props {
   title: string;
   editMode: boolean;
   currentValue: string;
+  selectOptions?: string[];
   onSubmit: (args: {
     correctedValue: string | null;
     reasonCategory: ReasonCategory;
@@ -26,6 +27,7 @@ export default function CorrectionModal({
   title,
   editMode,
   currentValue,
+  selectOptions,
   onSubmit,
   onClose,
 }: Props) {
@@ -56,7 +58,25 @@ export default function CorrectionModal({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 space-y-4">
         <h3 className="text-base font-semibold">{title}</h3>
 
-        {editMode && (
+        {editMode && selectOptions && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              Corrected value
+            </label>
+            <select
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              value={corrected}
+              onChange={(e) => setCorrected(e.target.value)}
+              data-testid="corrected-value-input"
+            >
+              {selectOptions.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {editMode && !selectOptions && (
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
               Corrected value
