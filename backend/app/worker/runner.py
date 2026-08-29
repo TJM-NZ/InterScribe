@@ -77,6 +77,7 @@ def _run_pipeline(
         started_at=started_at,
     )
     db.add(run)
+    db.flush()
     run_id = run.id
     db.commit()
 

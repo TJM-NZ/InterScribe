@@ -28,11 +28,6 @@ from sqlalchemy.orm import Session
 # a version that loads the cached pyannote/segmentation-3.0 model directly,
 # skipping the download and SHA256 check.
 def _find_pyannote_seg3(hf_home: str) -> str:
-    """Return the cached pytorch_model.bin path for pyannote/segmentation-3.0.
-
-    Searches the HuggingFace cache directory under hf_home. Falls back to the
-    model ID string so Model.from_pretrained can attempt its own resolution.
-    """
     import glob
     import os
     pattern = os.path.join(
@@ -65,16 +60,17 @@ _asr_module.load_vad_model = _load_vad_local
 # pyannote.audio 3.1.1 still calls hf_hub_download/snapshot_download with
 # use_auth_token. Shim both in huggingface_hub and in every already-imported
 # module that holds a direct reference.
+import functools as _functools
 import sys as _sys
 import huggingface_hub as _hf_hub
 
 
 def _make_compat(fn):
+    @_functools.wraps(fn)
     def _compat(*args, use_auth_token=None, **kwargs):
         if use_auth_token is not None and "token" not in kwargs:
             kwargs["token"] = use_auth_token
         return fn(*args, **kwargs)
-    _compat.__name__ = fn.__name__
     return _compat
 
 
@@ -91,7 +87,7 @@ for _fn_name in ("hf_hub_download", "snapshot_download"):
         except Exception:
             pass  # C extensions may raise TypeError on setattr; skip them
 
-del _sys, _hf_hub, _fn_name, _orig, _compat_fn, _mod, _make_compat
+del _functools, _sys, _hf_hub, _fn_name, _orig, _compat_fn, _mod, _make_compat
 
 from app.config import settings
 from app.models.video import JobStatus, TranscriptSegment, Video
