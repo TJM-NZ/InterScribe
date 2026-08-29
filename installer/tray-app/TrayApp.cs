@@ -117,12 +117,10 @@ class TrayContext : ApplicationContext
             string json;
             using (var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) })
             {
-                // GitHub API requires a User-Agent header.
                 client.DefaultRequestHeaders.Add("User-Agent", "InterScribe-Tray");
                 json = client.GetStringAsync(ReleasesApi).Result;
             }
 
-            // Extract tag_name (e.g. "v1.2.0") without a JSON parser dependency.
             var tagMatch = Regex.Match(json, "\"tag_name\"\\s*:\\s*\"v?([^\"]+)\"");
             if (!tagMatch.Success) return;
 
@@ -130,21 +128,26 @@ class TrayContext : ApplicationContext
             var current = new Version(CurrentVersion);
             if (latest <= current) return;
 
-            // New version found — surface it on the UI thread.
-            string label = $"Update available — v{latest}";
+            // Parse the installer download URL from the release assets.
+            var urlMatch = Regex.Match(json,
+                "\"browser_download_url\"\\s*:\\s*\"([^\"]*InterScribe-Setup\\.exe[^\"]*)\"");
+            string? downloadUrl = urlMatch.Success ? urlMatch.Groups[1].Value : null;
+
+            string label = $"Install update v{latest}";
+
             _tray.ShowBalloonTip(
                 8000, "InterScribe update available",
-                $"Version {latest} is ready. Click here to download.",
+                $"Version {latest} is ready. Click to install now.",
                 ToolTipIcon.Info);
-            _tray.BalloonTipClicked += (_, __) => OpenReleasesPage();
+            _tray.BalloonTipClicked += (_, __) => TriggerInstall(downloadUrl, label);
 
             _menu.Invoke(new Action(() =>
             {
-                _updateItem = new ToolStripMenuItem(label, null, (_, __) => OpenReleasesPage())
+                _updateItem = new ToolStripMenuItem(label, null,
+                    (_, __) => TriggerInstall(downloadUrl, label))
                 {
                     ForeColor = Color.FromArgb(5, 150, 105), // emerald-600
                 };
-                // Insert at position 0, above "Open InterScribe".
                 _menu.Items.Insert(0, _updateItem);
                 _menu.Items.Insert(1, new ToolStripSeparator());
             }));
@@ -153,6 +156,58 @@ class TrayContext : ApplicationContext
         {
             // Silently ignore — no network, private repo not found, etc.
         }
+    }
+
+    private void TriggerInstall(string? downloadUrl, string menuLabel)
+    {
+        if (downloadUrl == null)
+        {
+            // No asset found — fall back to releases page.
+            OpenReleasesPage();
+            return;
+        }
+        new Thread(() => InstallUpdate(downloadUrl, menuLabel)) { IsBackground = true }.Start();
+    }
+
+    private void InstallUpdate(string url, string menuLabel)
+    {
+        SetUpdateLabel("Downloading update…");
+        try
+        {
+            var dest = Path.Combine(Path.GetTempPath(), "InterScribe-Setup.exe");
+            using (var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) })
+            {
+                client.DefaultRequestHeaders.Add("User-Agent", "InterScribe-Tray");
+                var bytes = client.GetByteArrayAsync(url).Result;
+                File.WriteAllBytes(dest, bytes);
+            }
+
+            // /SILENT     — no wizard UI
+            // /CLOSEAPPLICATIONS     — close apps with locked files (including this tray)
+            // /RESTARTAPPLICATIONS   — relaunch them after install completes
+            Process.Start(new ProcessStartInfo
+            {
+                FileName        = dest,
+                Arguments       = "/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+                UseShellExecute = true,
+            });
+
+            _menu.Invoke(new Action(() => Application.Exit()));
+        }
+        catch
+        {
+            SetUpdateLabel(menuLabel);
+            _tray.ShowBalloonTip(5000, "Update failed",
+                "Could not download the update. Opening releases page instead.",
+                ToolTipIcon.Error);
+            OpenReleasesPage();
+        }
+    }
+
+    private void SetUpdateLabel(string text)
+    {
+        if (_updateItem == null) return;
+        _menu.Invoke(new Action(() => _updateItem.Text = text));
     }
 
     private static void OpenReleasesPage()
