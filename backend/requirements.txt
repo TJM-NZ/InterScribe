@@ -134,6 +134,8 @@ julius==0.2.8
     # via torch-audiomentations
 kiwisolver==1.5.0
     # via matplotlib
+limits==3.7.0
+    # via slowapi
 lightning==2.6.5
     # via pyannote-audio
 lightning-utilities==0.15.3
@@ -373,6 +375,8 @@ shellingham==1.5.4
     # via typer
 six==1.17.0
     # via python-dateutil
+slowapi==0.1.9
+    # via -r /app/requirements.in
 sniffio==1.3.1
     # via httpx
 sortedcontainers==2.4.0

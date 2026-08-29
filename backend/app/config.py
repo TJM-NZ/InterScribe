@@ -36,5 +36,8 @@ class Settings(BaseSettings):
 
     worker_poll_interval: int = 5
 
+    # Auth — generate with: python -c "import secrets; print(secrets.token_hex(32))"
+    interscribe_api_key: str = ""
+
 
 settings = Settings()

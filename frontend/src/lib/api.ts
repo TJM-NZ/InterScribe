@@ -1,4 +1,9 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Empty base = relative URLs, routed by nginx. Set NEXT_PUBLIC_API_URL for dev without Docker.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(url, init);
+}
 
 export function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -113,7 +118,7 @@ export interface Quote {
 }
 
 export async function listVideos(): Promise<VideoSummary[]> {
-  const res = await fetch(`${API_BASE}/api/videos`);
+  const res = await apiFetch(`${API_BASE}/api/videos`);
   if (!res.ok) throw await res.json();
   const data = await res.json();
   return data.videos;
@@ -122,19 +127,19 @@ export async function listVideos(): Promise<VideoSummary[]> {
 export async function uploadVideo(file: File): Promise<{ id: string; status: string; original_filename: string; media_type: string }> {
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`${API_BASE}/api/videos`, { method: "POST", body: form });
+  const res = await apiFetch(`${API_BASE}/api/videos`, { method: "POST", body: form });
   if (!res.ok) throw await res.json();
   return res.json();
 }
 
 export async function getVideo(id: string): Promise<VideoSummary> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}`);
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}`);
   if (!res.ok) throw await res.json();
   return res.json();
 }
 
 export async function getTranscript(id: string): Promise<{ segments: TranscriptSegment[] }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/transcript`);
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/transcript`);
   if (!res.ok) throw await res.json();
   return res.json();
 }
@@ -143,7 +148,7 @@ export async function assignSpeakers(
   id: string,
   assignments: { speaker_label: string; role: SpeakerRole; name?: string | null }[]
 ): Promise<{ video_id: string; speaker_role_map: SpeakerRoleEntry[] }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/speakers`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/speakers`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ assignments }),
@@ -153,13 +158,13 @@ export async function assignSpeakers(
 }
 
 export async function confirmReview(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/confirm-review`, { method: "POST" });
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/confirm-review`, { method: "POST" });
   if (!res.ok) throw await res.json();
   return res.json();
 }
 
 export async function getPhase1Narrative(id: string): Promise<Phase1Narrative> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/narrative`);
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/phase1/narrative`);
   if (!res.ok) throw await res.json();
   return res.json();
 }
@@ -173,7 +178,7 @@ export async function logTranscriptCorrection(
     reason_note: string | null;
   }
 ): Promise<{ correction_id: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${videoId}/transcript/corrections`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${videoId}/transcript/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -191,7 +196,7 @@ export async function logTranscriptSpeakerCorrection(
     reason_note: string | null;
   }
 ): Promise<{ correction_id: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${videoId}/transcript/speaker-corrections`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${videoId}/transcript/speaker-corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -212,7 +217,7 @@ export async function logCorrection(
     reason_note: string | null;
   }
 ): Promise<{ correction_id: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${videoId}/phase1/corrections`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${videoId}/phase1/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -222,7 +227,7 @@ export async function logCorrection(
 }
 
 export async function confirmPhase1Review(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/phase1/confirm-review`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/phase1/confirm-review`, {
     method: "POST",
   });
   if (!res.ok) throw await res.json();
@@ -230,19 +235,19 @@ export async function confirmPhase1Review(id: string): Promise<{ video_id: strin
 }
 
 export async function retryVideo(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/retry`, { method: "POST" });
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/retry`, { method: "POST" });
   if (!res.ok) throw await res.json();
   return res.json();
 }
 
 export async function rerunVideo(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/rerun`, { method: "POST" });
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/rerun`, { method: "POST" });
   if (!res.ok) throw await res.json();
   return res.json();
 }
 
 export async function rerunTranscript(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/rerun-transcript`, { method: "POST" });
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/rerun-transcript`, { method: "POST" });
   if (!res.ok) throw await res.json();
   return res.json();
 }
@@ -256,7 +261,7 @@ export async function getPhase2Quotes(
   const params = new URLSearchParams({ view });
   if (limit !== undefined) params.set("limit", String(limit));
   if (type !== undefined) params.set("type", type);
-  const res = await fetch(`${API_BASE}/api/videos/${id}/phase2/quotes?${params}`);
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/phase2/quotes?${params}`);
   if (!res.ok) throw await res.json();
   return res.json();
 }
@@ -273,7 +278,7 @@ export async function logPhase2Correction(
     reason_note: string | null;
   }
 ): Promise<{ correction_id: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${videoId}/phase2/corrections`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${videoId}/phase2/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -283,7 +288,7 @@ export async function logPhase2Correction(
 }
 
 export async function confirmPhase2Review(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/phase2/confirm-review`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/phase2/confirm-review`, {
     method: "POST",
   });
   if (!res.ok) throw await res.json();
@@ -291,7 +296,7 @@ export async function confirmPhase2Review(id: string): Promise<{ video_id: strin
 }
 
 export async function getCondensationHeadlines(id: string): Promise<{ quotes: Quote[] }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/condensation/headlines`);
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/condensation/headlines`);
   if (!res.ok) throw await res.json();
   return res.json();
 }
@@ -308,7 +313,7 @@ export async function logCondensationCorrection(
     reason_note: string | null;
   }
 ): Promise<{ correction_id: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${videoId}/condensation/corrections`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${videoId}/condensation/corrections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -318,7 +323,7 @@ export async function logCondensationCorrection(
 }
 
 export async function confirmCondensationReview(id: string): Promise<{ video_id: string; status: string }> {
-  const res = await fetch(`${API_BASE}/api/videos/${id}/condensation/confirm-review`, {
+  const res = await apiFetch(`${API_BASE}/api/videos/${id}/condensation/confirm-review`, {
     method: "POST",
   });
   if (!res.ok) throw await res.json();

@@ -1,12 +1,16 @@
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from sqlalchemy import delete, func, select, text
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import api_error, get_video_or_404
+from app.limiter import limiter
 from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest, TranscriptSpeakerCorrectionRequest
+
+logger = logging.getLogger(__name__)
 from app.models.phase1 import (
     Correction,
     CorrectionEntityType,
@@ -36,12 +40,6 @@ from app.services.storage import (
 router = APIRouter()
 
 
-@router.get("/health")
-def health(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
-    return {"status": "ok"}
-
-
 @router.get("/api/videos")
 def list_videos(db: Session = Depends(get_db)):
     videos = (
@@ -67,7 +65,8 @@ def list_videos(db: Session = Depends(get_db)):
 
 
 @router.post("/api/videos", status_code=201)
-def upload_video(file: UploadFile, db: Session = Depends(get_db)):
+@limiter.limit("10/hour")
+def upload_video(request: Request, file: UploadFile, db: Session = Depends(get_db)):
     try:
         storage_path, media_type_val, duration = store_upload(file.file, file.filename or "upload")
     except UnsupportedMediaError as exc:
@@ -75,7 +74,8 @@ def upload_video(file: UploadFile, db: Session = Depends(get_db)):
     except (FileTooLargeError, DurationExceededError) as exc:
         raise HTTPException(status_code=413, detail=api_error(str(exc), "FILE_TOO_LARGE"))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=api_error(f"Upload failed: {exc}", "UPLOAD_FAILED"))
+        logger.error("Upload failed for %r: %s", file.filename, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=api_error("Upload failed", "UPLOAD_FAILED"))
 
     video = Video(
         original_filename=file.filename or "upload",
@@ -278,7 +278,8 @@ def _clear_phase2_data(video_id: uuid.UUID, db: Session) -> None:
 
 
 @router.post("/api/videos/{video_id}/retry")
-def retry_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
+@limiter.limit("30/hour")
+def retry_video(request: Request, video_id: uuid.UUID, db: Session = Depends(get_db)):
     video = get_video_or_404(video_id, db)
 
     if video.status != JobStatus.failed:
@@ -332,7 +333,8 @@ _RERUN_TRANSCRIPT_STATUSES = {
 
 
 @router.post("/api/videos/{video_id}/rerun")
-def rerun_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
+@limiter.limit("30/hour")
+def rerun_video(request: Request, video_id: uuid.UUID, db: Session = Depends(get_db)):
     video = get_video_or_404(video_id, db)
 
     if video.status not in _RERUN_STATUSES:
@@ -361,7 +363,8 @@ def rerun_video(video_id: uuid.UUID, db: Session = Depends(get_db)):
 
 
 @router.post("/api/videos/{video_id}/rerun-transcript")
-def rerun_transcript(video_id: uuid.UUID, db: Session = Depends(get_db)):
+@limiter.limit("30/hour")
+def rerun_transcript(request: Request, video_id: uuid.UUID, db: Session = Depends(get_db)):
     video = get_video_or_404(video_id, db)
 
     if video.status not in _RERUN_TRANSCRIPT_STATUSES:

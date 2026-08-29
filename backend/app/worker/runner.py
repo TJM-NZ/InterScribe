@@ -91,20 +91,20 @@ def _run_pipeline(
     except Exception as exc:
         db.rollback()
         completed_at = datetime.now(timezone.utc)
+        logger.error("%s failed for video %s", label, video.id, exc_info=True)
         with SessionLocal() as err_db:
             v = err_db.get(Video, video.id)
             if v:
                 v.status = JobStatus.failed
-                v.error_reason = str(exc)[:500]
+                v.error_reason = f"{label} failed — check server logs"
                 err_db.commit()
             r = err_db.get(ProcessingRun, run_id)
             if r:
                 r.completed_at = completed_at
                 r.wall_seconds = (completed_at - started_at).total_seconds()
                 r.succeeded = False
-                r.error_reason = str(exc)[:500]
+                r.error_reason = type(exc).__name__
                 err_db.commit()
-        logger.error("%s failed for video %s: %s", label, video.id, exc)
     finally:
         if unload_gpu:
             unload_qwen_model()
