@@ -1,4 +1,3 @@
-import dataclasses
 import logging
 import statistics
 
@@ -55,6 +54,7 @@ _vad_module.load_vad_model = _load_vad_local
 # whisperx.asr does `from .vad import load_vad_model` so patch its namespace too
 import whisperx.asr as _asr_module
 _asr_module.load_vad_model = _load_vad_local
+del _asr_module
 
 # huggingface_hub 1.23.0 removed `use_auth_token` kwarg (renamed to `token`).
 # pyannote.audio 3.1.1 still calls hf_hub_download/snapshot_download with

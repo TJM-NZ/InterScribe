@@ -98,14 +98,13 @@ def _run_pipeline(
             if v:
                 v.status = JobStatus.failed
                 v.error_reason = f"{label} failed — check server logs"
-                err_db.commit()
             r = err_db.get(ProcessingRun, run_id)
             if r:
                 r.completed_at = completed_at
                 r.wall_seconds = (completed_at - started_at).total_seconds()
                 r.succeeded = False
                 r.error_reason = type(exc).__name__
-                err_db.commit()
+            err_db.commit()
     finally:
         if unload_gpu:
             unload_qwen_model()
