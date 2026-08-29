@@ -94,10 +94,10 @@ def _run_pipeline(
         completed_at = datetime.now(timezone.utc)
         logger.error("%s failed for video %s", label, video.id, exc_info=True)
         with SessionLocal() as err_db:
-            v = err_db.get(Video, video.id)
-            if v:
-                v.status = JobStatus.failed
-                v.error_reason = f"{label} failed — check server logs"
+            failed_video = err_db.get(Video, video.id)
+            if failed_video:
+                failed_video.status = JobStatus.failed
+                failed_video.error_reason = f"{label} failed — check server logs"
             r = err_db.get(ProcessingRun, run_id)
             if r:
                 r.completed_at = completed_at

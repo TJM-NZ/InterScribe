@@ -142,8 +142,8 @@ def transcribe_video(video: Video, db: Session) -> None:
 
     audio = whisperx.load_audio(video.storage_path)
 
-    result = model.transcribe(audio, batch_size=batch_size)
-    language = result.get("language", "en")
+    transcription_result = model.transcribe(audio, batch_size=batch_size)
+    language = transcription_result.get("language", "en")
     del model
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -152,8 +152,8 @@ def transcribe_video(video: Video, db: Session) -> None:
         align_model, metadata = whisperx.load_align_model(
             language_code=language, device=device
         )
-        result = whisperx.align(
-            result["segments"], align_model, metadata, audio, device,
+        aligned_result = whisperx.align(
+            transcription_result["segments"], align_model, metadata, audio, device,
             return_char_alignments=False,
         )
         del align_model, metadata
@@ -164,6 +164,7 @@ def transcribe_video(video: Video, db: Session) -> None:
             "No alignment model for language '%s', using raw transcription segments: %s",
             language, exc,
         )
+        aligned_result = transcription_result
         video.alignment_skipped = True
 
     diarize_model = whisperx.DiarizationPipeline(device=device)
@@ -172,10 +173,9 @@ def transcribe_video(video: Video, db: Session) -> None:
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    result = whisperx.assign_word_speakers(diarize_segments, result)
+    speaker_result = whisperx.assign_word_speakers(diarize_segments, aligned_result)
 
-    segments_data = result.get("segments", [])
-    for idx, seg in enumerate(segments_data):
+    for idx, seg in enumerate(speaker_result.get("segments", [])):
         speaker_label = seg.get("speaker") or "SPEAKER_UNKNOWN"
         confidence = _compute_confidence(seg)
         text = seg.get("text", "").strip()
