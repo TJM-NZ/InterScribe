@@ -1,33 +1,48 @@
 # InterScribe
 
-AI-powered audio/video editor for interview workflows. Upload a recording, get a diarized transcript, review narrative clusters, extract and edit quotes, and condense headlines — all running locally.
-
-**Pipeline:**
-1. Upload audio/video → WhisperX transcribes + diarizes speakers
-2. Review transcript, fix low-confidence words, assign speaker roles
-3. Qwen3.5:9b extracts narrative themes and notable moments
-4. Review and rank themes; Qwen extracts candidate quotes grounded to transcript segments
-5. Review quotes; Qwen condenses approved headlines to ≤20 words
-
-Everything runs on your own hardware. No cloud APIs required after setup.
+InterScribe turns interview recordings into polished, ready-to-use content. Upload an audio or video file, and it transcribes it, identifies who is speaking, pulls out the key themes and best quotes, and condenses them into short headlines — all on your own computer, with no data sent to the cloud.
 
 ---
 
-## Platform Support
+## What it does
 
-| Platform | Transcription (WhisperX) | LLM (Qwen / Ollama) |
-|---|---|---|
-| Linux + NVIDIA GPU | GPU (fast) | GPU in Docker |
-| Windows + NVIDIA GPU | GPU (fast) | GPU in Docker (via WSL2) |
-| Mac (Apple Silicon) | CPU in Docker (slow) | Metal GPU, run natively |
+1. **Upload** your recording (audio or video, up to 2 GB / 3 hours)
+2. **Transcribe** — InterScribe automatically transcribes the audio and separates speakers
+3. **Review transcript** — correct any mis-heard words, assign names to speakers
+4. **Extract themes** — the AI reads the transcript and surfaces the main topics and notable moments
+5. **Review themes** — keep what's relevant, discard what isn't
+6. **Extract quotes** — the AI pulls the best quotes from the transcript, grounded to the exact words spoken
+7. **Review quotes** — approve or discard each quote
+8. **Condense headlines** — approved quotes are condensed to ≤20 words, ready to use
+
+Everything runs locally. No audio, transcripts, or content ever leaves your machine.
 
 ---
 
-## Quick Install
+## Requirements
 
-**The only prerequisite you need to install manually is [Docker Desktop](https://www.docker.com/products/docker-desktop/).** Everything else (Ollama, NVIDIA Container Toolkit, model downloads) is handled by the setup script.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — the only thing you need to install manually
+- A free [HuggingFace account](https://huggingface.co/join) — setup will ask for a token once to download the speaker-identification models; it is not stored anywhere after that
+- Windows 10/11, Mac (Apple Silicon or Intel), or Linux
+- NVIDIA GPU strongly recommended for fast transcription (the app works without one, but transcription will be slow)
 
-You'll also need a [HuggingFace](https://huggingface.co) token — the script will prompt you and tell you where to get one.
+---
+
+## Installation
+
+### Windows
+
+1. Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) with WSL 2 enabled (the installer will prompt you)
+2. Download and run **InterScribe-Setup.exe** from the [releases page](https://github.com/TJM-NZ/InterScribe/releases/latest)
+3. The installer puts an InterScribe icon in your system tray and on your desktop
+4. Double-click the tray icon (or use **Start services** from the right-click menu) to launch the app
+
+The first launch downloads the AI models (~10 GB total). This takes 15–30 minutes depending on your internet connection and only happens once.
+
+### Mac
+
+1. Install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+2. Open Terminal and run:
 
 ```bash
 git clone https://github.com/TJM-NZ/InterScribe.git
@@ -35,24 +50,10 @@ cd InterScribe
 ./setup.sh
 ```
 
-The script detects your OS:
-- **Mac** — installs Ollama via Homebrew, starts it natively (Metal GPU), sets CPU mode for WhisperX in Docker
-- **Linux** — installs NVIDIA Container Toolkit automatically if an NVIDIA GPU is found
-- **Windows** — run the above inside your WSL2 terminal (see Windows notes below)
+### Linux
 
-Then open http://localhost:3002.
-
----
-
-## Windows Notes
-
-Before running `setup.sh` on Windows:
-
-1. Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/) with the WSL2 backend enabled
-2. Install WSL2 — open PowerShell as Administrator and run `wsl --install`, then reboot
-3. Install [NVIDIA drivers for Windows](https://www.nvidia.com/Download/index.aspx) (on Windows, not inside WSL)
-
-Then open your WSL2 terminal (e.g. Ubuntu from the Start menu) and run:
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose)
+2. Run:
 
 ```bash
 git clone https://github.com/TJM-NZ/InterScribe.git
@@ -60,64 +61,108 @@ cd InterScribe
 ./setup.sh
 ```
 
-The script handles the NVIDIA Container Toolkit install inside WSL2. Access the app at http://localhost:3002 in your Windows browser.
+The script installs the NVIDIA Container Toolkit automatically if you have an NVIDIA GPU.
 
 ---
 
-## First-Run Download Sizes
+## Opening the app
 
-The script pulls these automatically. Expect 15–30 minutes depending on your connection.
+Once running, open your browser and go to:
 
-| Component | Size | When |
-|---|---|---|
-| Qwen3.5:9b (Ollama) | ~6 GB | During `setup.sh` |
-| WhisperX `large-v2` (Linux/Windows) | ~3 GB | First transcription job |
-| WhisperX `small` (Mac) | ~500 MB | First transcription job |
-| pyannote diarization models | ~1 GB | First transcription job |
-
-All models are cached in Docker volumes (or Ollama's local store on Mac) and don't re-download on restart.
+**http://localhost:3002**
 
 ---
 
-## Usage
+## Windows system tray
 
-1. Open http://localhost:3002 and upload an audio or video file (up to 2 GB / 3 hours)
-2. The worker transcribes it in the background — progress shown in the UI
-3. **Gate 1:** Review the transcript, correct low-confidence words (highlighted in amber), and assign speaker roles (interviewer / interviewee)
-4. **Gate 2:** Review narrative themes and notable moments extracted by Qwen; reject any that don't fit
-5. **Gate 3:** Review extracted quotes grounded to the transcript; approve or discard
-6. **Gate 4:** Edit Qwen-condensed headlines (≤20 words) for approved headline-type quotes
+After installation, InterScribe lives in your system tray (bottom-right of the taskbar). Right-click the icon for:
+
+| Option | What it does |
+|--------|-------------|
+| Open InterScribe | Opens the app in your browser |
+| Start services | Starts the Docker containers |
+| Stop services | Stops everything cleanly |
+| View logs | Opens a log window for troubleshooting |
+| Run setup | Re-runs the initial setup (e.g. after a reinstall) |
+
+The icon is **green** when InterScribe is running, **grey** when stopped. If a new version is available, a notification appears and an update link is added to the menu.
 
 ---
 
-## Logs
+## Automation (StreamDeck and other launchers)
+
+If you use a StreamDeck or any other launcher to start multiple apps in one go, use `start.bat` instead of calling Docker directly:
+
+```
+start.bat
+```
+
+It handles the full startup sequence safely:
+
+- If InterScribe is already running, it skips straight to opening the browser
+- Waits for Docker to be ready before doing anything (no fixed delays — loops until ready)
+- Starts the containers
+- Waits until the app is actually responding before opening the browser
+- Exits with code `0` on success, `1` on failure — so your launcher can sequence other apps around it
+
+Point your StreamDeck button at `start.bat` in the InterScribe folder. Safe to trigger at any time, including right after a reboot.
+
+---
+
+## Stopping InterScribe
+
+**Windows:** Right-click the tray icon → Stop services.
+
+**Mac / Linux:**
 
 ```bash
-docker compose logs -f worker    # transcription + LLM jobs
+docker compose down        # stop containers, keep all your data
+docker compose down -v     # stop and delete all data (cannot be undone)
+```
+
+---
+
+## Troubleshooting
+
+**Transcription is very slow** — InterScribe is running on CPU. Make sure your NVIDIA GPU drivers are installed and Docker Desktop has GPU access enabled (Settings → Resources → GPU).
+
+**The app won't open** — check that Docker Desktop is running, then use Start services from the tray icon (Windows) or run `docker compose up -d` (Mac/Linux).
+
+**View logs:**
+
+```bash
+docker compose logs -f worker     # transcription and AI jobs
 docker compose logs -f backend
 docker compose logs -f frontend
 ```
 
 ---
 
-## Stopping
+## First-run download sizes
 
-```bash
-docker compose down              # stop containers, keep volumes (data preserved)
-docker compose down -v           # stop and delete all data
-```
+| Component | Size | When |
+|---|---|---|
+| Qwen3.5:9b (AI model) | ~6 GB | During setup |
+| WhisperX transcription model | ~3 GB | First transcription |
+| Speaker diarization models | ~1 GB | First transcription |
+
+All models are cached and do not re-download on restart.
 
 ---
 
 <details>
-<summary>Manual setup (without the script)</summary>
+<summary>Manual setup (advanced)</summary>
 
-### HuggingFace
+### HuggingFace token
 
-1. Create a [HuggingFace account](https://huggingface.co/join)
+Speaker identification (diarization) uses pyannote, which requires a free HuggingFace account:
+
+1. Create an account at [huggingface.co](https://huggingface.co/join)
 2. Accept the license for [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
 3. Accept the license for [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
-4. Generate a token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (read access)
+4. Generate a read token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+
+The token is only used once during the Docker build to download the models. It is not stored after that.
 
 ### Linux (NVIDIA GPU)
 
@@ -131,43 +176,34 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
 sudo apt update && sudo apt install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
 
-# Verify
-docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
-
 # Clone and configure
 git clone https://github.com/TJM-NZ/InterScribe.git && cd InterScribe
 cp .env.example .env
-# Edit .env: set POSTGRES_PASSWORD, DATABASE_URL, HUGGINGFACE_TOKEN
+# Edit .env — set POSTGRES_PASSWORD, DATABASE_URL, INTERSCRIBE_API_KEY, and paste your HuggingFace token when prompted during build
 
 # Start
 docker compose up --build -d
 docker compose exec ollama ollama pull qwen3.5:9b
 ```
 
-### Windows (NVIDIA GPU, via WSL2)
-
-Same as Linux above, but run everything inside your WSL2 terminal. NVIDIA drivers must be installed on Windows first (not in WSL).
-
-After installing NVIDIA Container Toolkit inside WSL2, restart Docker Desktop.
-
 ### Mac (Apple Silicon)
 
 ```bash
-# Install and start Ollama natively (uses Metal GPU)
+# Install Ollama natively (uses Metal GPU)
 brew install ollama
-ollama pull qwen3.5:9b   # Ollama app starts automatically; or run 'ollama serve &' first
+ollama pull qwen3.5:9b
 
 # Clone and configure
 git clone https://github.com/TJM-NZ/InterScribe.git && cd InterScribe
 cp .env.example .env
-# Edit .env and set:
-#   POSTGRES_PASSWORD, DATABASE_URL, HUGGINGFACE_TOKEN
+# Edit .env:
+#   POSTGRES_PASSWORD, DATABASE_URL, INTERSCRIBE_API_KEY
 #   WHISPER_DEVICE=cpu
 #   WHISPER_COMPUTE_TYPE=int8
 #   WHISPER_MODEL_SIZE=small
 #   OLLAMA_BASE_URL=http://host.docker.internal:11434
 
-# Start (Mac override removes the ollama container and NVIDIA GPU requirements)
+# Start
 docker compose -f docker-compose.yml -f docker-compose.mac.yml up --build -d
 ```
 
