@@ -205,6 +205,26 @@ export async function logTranscriptSpeakerCorrection(
   return res.json();
 }
 
+export interface CutSegmentResult {
+  left_segment: TranscriptSegment;
+  right_segment: TranscriptSegment;
+}
+
+export async function cutSegment(
+  videoId: string,
+  segmentId: string,
+  cutAtChar: number,
+  text?: string,
+): Promise<CutSegmentResult> {
+  const res = await apiFetch(`${API_BASE}/api/videos/${videoId}/transcript/cut`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ segment_id: segmentId, cut_at_char: cutAtChar, text: text ?? null }),
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
 export async function mergeSegments(
   videoId: string,
   segmentId: string

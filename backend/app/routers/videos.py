@@ -2,13 +2,13 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.errors import api_error, get_video_or_404
 from app.limiter import limiter
-from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest, TranscriptSpeakerCorrectionRequest, TranscriptMergeRequest
+from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest, TranscriptCutRequest, TranscriptMergeRequest, TranscriptSpeakerCorrectionRequest
 
 logger = logging.getLogger(__name__)
 from app.models.phase1 import (
@@ -605,6 +605,125 @@ def merge_transcript_segments(
         },
         "removed_segment_id": str(seg2.id),
     }
+
+
+@router.post("/api/videos/{video_id}/transcript/cut", status_code=200)
+def cut_transcript_segment(
+    video_id: uuid.UUID,
+    body: TranscriptCutRequest,
+    db: Session = Depends(get_db),
+):
+    video = get_video_or_404(video_id, db)
+
+    if video.status != JobStatus.ready_for_review:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error("Cut only allowed during Gate 1 review", "NOT_READY_FOR_REVIEW"),
+        )
+
+    seg = db.execute(
+        select(TranscriptSegment).where(
+            TranscriptSegment.id == body.segment_id,
+            TranscriptSegment.video_id == video_id,
+        )
+    ).scalar_one_or_none()
+
+    if seg is None:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Segment not found", "SEGMENT_NOT_FOUND"),
+        )
+
+    working_text = body.text if body.text is not None else seg.text
+
+    if body.cut_at_char <= 0 or body.cut_at_char >= len(working_text):
+        raise HTTPException(
+            status_code=400,
+            detail=api_error("cut_at_char out of range", "CUT_POSITION_INVALID"),
+        )
+
+    left_text = working_text[: body.cut_at_char].rstrip()
+    right_text = working_text[body.cut_at_char :].lstrip()
+
+    if not left_text or not right_text:
+        raise HTTPException(
+            status_code=400,
+            detail=api_error("Cut would produce an empty segment", "CUT_PRODUCES_EMPTY_SEGMENT"),
+        )
+
+    original_text = seg.text
+    original_end_ts = seg.end_ts
+    original_segment_id = seg.segment_id
+
+    if body.text is not None and body.text != original_text:
+        db.add(Correction(
+            video_id=video_id,
+            stage=CorrectionStage.transcription,
+            entity_type=CorrectionEntityType.transcript_segment,
+            entity_id=seg.id,
+            field_name="text",
+            original_value={"text": original_text},
+            corrected_value={"text": body.text},
+            reason_category=ReasonCategory.preference,
+            reason_note=None,
+        ))
+
+    cut_ts = seg.start_ts + (body.cut_at_char / len(working_text)) * (original_end_ts - seg.start_ts)
+
+    db.execute(
+        update(TranscriptSegment)
+        .where(
+            TranscriptSegment.video_id == video_id,
+            TranscriptSegment.segment_id > original_segment_id,
+        )
+        .values(segment_id=TranscriptSegment.segment_id + 1)
+    )
+
+    seg.text = left_text
+    seg.end_ts = cut_ts
+    seg.repetition_flagged = False
+
+    right_seg = TranscriptSegment(
+        video_id=video_id,
+        segment_id=original_segment_id + 1,
+        start_ts=cut_ts,
+        end_ts=original_end_ts,
+        text=right_text,
+        speaker_label=seg.speaker_label,
+        confidence=seg.confidence,
+        repetition_flagged=False,
+    )
+    db.add(right_seg)
+
+    db.add(Correction(
+        video_id=video_id,
+        stage=CorrectionStage.transcription,
+        entity_type=CorrectionEntityType.transcript_segment,
+        entity_id=seg.id,
+        field_name="cut",
+        original_value={"text": original_text, "start_ts": seg.start_ts, "end_ts": original_end_ts},
+        corrected_value={"left_text": left_text, "right_text": right_text, "cut_ts": cut_ts},
+        reason_category=ReasonCategory.preference,
+        reason_note=None,
+    ))
+
+    db.commit()
+    db.refresh(seg)
+    db.refresh(right_seg)
+
+    def _seg_dict(s: TranscriptSegment) -> dict:
+        return {
+            "id": str(s.id),
+            "segment_id": s.segment_id,
+            "start_ts": s.start_ts,
+            "end_ts": s.end_ts,
+            "text": s.text,
+            "speaker_label": s.speaker_label,
+            "confidence": s.confidence,
+            "repetition_flagged": s.repetition_flagged,
+        }
+
+    return {"left_segment": _seg_dict(seg), "right_segment": _seg_dict(right_seg)}
 
 
 @router.get("/api/stats/timing")

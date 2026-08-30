@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-import { assignSpeakers, confirmReview, getTranscript } from "../lib/api";
+import { assignSpeakers, confirmReview, cutSegment, getTranscript } from "../lib/api";
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -104,6 +104,63 @@ describe("confirmReview", () => {
 
     await expect(confirmReview("bad-id")).rejects.toMatchObject({
       detail: { code: "NOT_FOUND" },
+    });
+  });
+});
+
+describe("cutSegment", () => {
+  const leftSeg = { id: "s1", video_id: "v1", segment_id: 0, start_ts: 0, end_ts: 5.5, text: "Hello world", speaker_label: "SPEAKER_00", confidence: 0.9, repetition_flagged: false };
+  const rightSeg = { id: "s2", video_id: "v1", segment_id: 1, start_ts: 5.5, end_ts: 10, text: "goodbye world", speaker_label: "SPEAKER_00", confidence: 0.9, repetition_flagged: false };
+
+  it("posts cut and returns left and right segments", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ left_segment: leftSeg, right_segment: rightSeg }),
+    });
+
+    const result = await cutSegment("v1", "s1", 11);
+    expect(result.left_segment.text).toBe("Hello world");
+    expect(result.right_segment.text).toBe("goodbye world");
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/videos/v1/transcript/cut"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("sends text param when provided", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ left_segment: leftSeg, right_segment: rightSeg }) });
+
+    await cutSegment("v1", "s1", 5, "Hello world");
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.text).toBe("Hello world");
+    expect(body.cut_at_char).toBe(5);
+  });
+
+  it("omits text param when not provided", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ left_segment: leftSeg, right_segment: rightSeg }) });
+
+    await cutSegment("v1", "s1", 5);
+    const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.text).toBeNull();
+  });
+
+  it("throws 409 when not ready for review", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ detail: { error: "Cut only allowed during Gate 1 review", code: "NOT_READY_FOR_REVIEW", trace_id: "t1" } }),
+    });
+    await expect(cutSegment("v1", "s1", 5)).rejects.toMatchObject({
+      detail: { code: "NOT_READY_FOR_REVIEW" },
+    });
+  });
+
+  it("throws 400 on invalid cut position", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ detail: { error: "cut_at_char out of range", code: "CUT_POSITION_INVALID", trace_id: "t2" } }),
+    });
+    await expect(cutSegment("v1", "s1", 0)).rejects.toMatchObject({
+      detail: { code: "CUT_POSITION_INVALID" },
     });
   });
 });

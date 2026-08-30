@@ -34,6 +34,12 @@ class TranscriptMergeRequest(BaseModel):
     segment_id: uuid.UUID
 
 
+class TranscriptCutRequest(BaseModel):
+    segment_id: uuid.UUID
+    cut_at_char: int
+    text: str | None = None
+
+
 class SpeakerAssignment(BaseModel):
     speaker_label: str
     role: SpeakerRole
