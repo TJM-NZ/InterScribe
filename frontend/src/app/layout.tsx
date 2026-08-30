@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Sidebar from "@/components/Sidebar";
 
 export const metadata: Metadata = {
   title: "InterScribe",
@@ -9,11 +10,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-gray-50 text-gray-900">
-        <header className="bg-white border-b border-gray-200 px-6 py-4">
-          <h1 className="text-xl font-semibold tracking-tight">InterScribe</h1>
-        </header>
-        <main className="max-w-4xl mx-auto px-6 py-8">{children}</main>
+      <body className="min-h-screen bg-gray-50 text-gray-900 flex">
+        <Sidebar />
+        <main className="flex-1 min-w-0 overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-8 py-8">{children}</div>
+        </main>
       </body>
     </html>
   );
