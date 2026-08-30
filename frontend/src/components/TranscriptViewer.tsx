@@ -5,6 +5,7 @@ import {
   formatTimestamp,
   logTranscriptCorrection,
   logTranscriptSpeakerCorrection,
+  mergeSegments,
   type ReasonCategory,
   type TranscriptSegment,
 } from "@/lib/api";
@@ -31,6 +32,7 @@ export default function TranscriptViewer({
 }: Props) {
   const [segments, setSegments] = useState(initialSegments);
   const [correcting, setCorrecting] = useState<CorrectingMode | null>(null);
+  const [merging, setMerging] = useState<string | null>(null);
 
   if (segments.length === 0) {
     return <p className="text-gray-400 text-sm">No transcript segments found.</p>;
@@ -78,16 +80,33 @@ export default function TranscriptViewer({
     );
   };
 
+  const handleMerge = async (seg: TranscriptSegment) => {
+    if (!videoId || merging) return;
+    setMerging(seg.id);
+    try {
+      const { merged_segment, removed_segment_id } = await mergeSegments(videoId, seg.id);
+      setSegments((prev) =>
+        prev
+          .map((s) => (s.id === seg.id ? { ...s, ...merged_segment } : s))
+          .filter((s) => s.id !== removed_segment_id)
+      );
+    } finally {
+      setMerging(null);
+    }
+  };
+
   return (
     <>
       <div className="space-y-1" data-testid="transcript-viewer">
-        {segments.map((seg) => {
+        {segments.map((seg, idx) => {
           const isLowConfidence = seg.confidence < LOW_CONFIDENCE_THRESHOLD;
           const isRepetition = seg.repetition_flagged;
           const roleName = speakerRoles[seg.speaker_label];
           const speakerName = speakerNames[seg.speaker_label];
           const displayLabel = speakerName || seg.speaker_label;
           const otherSpeakers = speakerLabels.filter((l) => l !== seg.speaker_label);
+          const isLast = idx === segments.length - 1;
+          const isMerging = merging === seg.id;
 
           return (
             <div
@@ -140,6 +159,16 @@ export default function TranscriptViewer({
                     >
                       Correct
                     </button>
+                    {!isLast && (
+                      <button
+                        onClick={() => handleMerge(seg)}
+                        disabled={isMerging}
+                        className="text-xs text-gray-400 hover:text-indigo-600 disabled:opacity-40"
+                        data-testid="merge-segment-button"
+                      >
+                        {isMerging ? "Merging…" : "Merge ↓"}
+                      </button>
+                    )}
                   </span>
                 )}
               </div>

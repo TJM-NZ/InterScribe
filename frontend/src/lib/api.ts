@@ -205,6 +205,19 @@ export async function logTranscriptSpeakerCorrection(
   return res.json();
 }
 
+export async function mergeSegments(
+  videoId: string,
+  segmentId: string
+): Promise<{ merged_segment: TranscriptSegment; removed_segment_id: string }> {
+  const res = await apiFetch(`${API_BASE}/api/videos/${videoId}/transcript/merge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ segment_id: segmentId }),
+  });
+  if (!res.ok) throw await res.json();
+  return res.json();
+}
+
 export async function logCorrection(
   videoId: string,
   payload: {

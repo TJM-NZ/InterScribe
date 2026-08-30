@@ -30,6 +30,10 @@ class TranscriptSpeakerCorrectionRequest(BaseModel):
     reason_note: str | None = None
 
 
+class TranscriptMergeRequest(BaseModel):
+    segment_id: uuid.UUID
+
+
 class SpeakerAssignment(BaseModel):
     speaker_label: str
     role: SpeakerRole

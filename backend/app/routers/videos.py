@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.errors import api_error, get_video_or_404
 from app.limiter import limiter
-from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest, TranscriptSpeakerCorrectionRequest
+from app.schemas import SpeakerAssignment, SpeakerAssignmentsRequest, TranscriptCorrectionRequest, TranscriptSpeakerCorrectionRequest, TranscriptMergeRequest
 
 logger = logging.getLogger(__name__)
 from app.models.phase1 import (
@@ -16,6 +16,7 @@ from app.models.phase1 import (
     CorrectionEntityType,
     CorrectionStage,
     NarrativeCluster,
+    ReasonCategory,
     TranscriptChunk,
     TranscriptTurn,
 )
@@ -523,6 +524,87 @@ def correct_transcript_speaker(
     db.commit()
 
     return {"correction_id": str(correction.id)}
+
+
+@router.post("/api/videos/{video_id}/transcript/merge", status_code=200)
+def merge_transcript_segments(
+    video_id: uuid.UUID,
+    body: TranscriptMergeRequest,
+    db: Session = Depends(get_db),
+):
+    video = get_video_or_404(video_id, db)
+
+    if video.status not in TRANSCRIPT_VIEWABLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error("Transcript not yet available", "TRANSCRIPT_NOT_READY"),
+        )
+
+    seg1 = db.execute(
+        select(TranscriptSegment).where(
+            TranscriptSegment.id == body.segment_id,
+            TranscriptSegment.video_id == video_id,
+        )
+    ).scalar_one_or_none()
+
+    if seg1 is None:
+        raise HTTPException(
+            status_code=404,
+            detail=api_error("Segment not found", "SEGMENT_NOT_FOUND"),
+        )
+
+    seg2 = db.execute(
+        select(TranscriptSegment).where(
+            TranscriptSegment.video_id == video_id,
+            TranscriptSegment.segment_id == seg1.segment_id + 1,
+        )
+    ).scalar_one_or_none()
+
+    if seg2 is None:
+        raise HTTPException(
+            status_code=409,
+            detail=api_error("No adjacent next segment to merge with", "NO_NEXT_SEGMENT"),
+        )
+
+    original = {
+        "seg1": {"text": seg1.text, "end_ts": seg1.end_ts, "confidence": seg1.confidence},
+        "seg2": {"id": str(seg2.id), "segment_id": seg2.segment_id, "text": seg2.text},
+    }
+
+    seg1.text = seg1.text.rstrip() + " " + seg2.text.lstrip()
+    seg1.end_ts = seg2.end_ts
+    seg1.confidence = min(seg1.confidence, seg2.confidence)
+    seg1.repetition_flagged = seg1.repetition_flagged or seg2.repetition_flagged
+
+    correction = Correction(
+        video_id=video_id,
+        stage=CorrectionStage.transcription,
+        entity_type=CorrectionEntityType.transcript_segment,
+        entity_id=seg1.id,
+        field_name="merge",
+        original_value=original,
+        corrected_value={"text": seg1.text, "end_ts": seg1.end_ts},
+        reason_category=ReasonCategory.preference,
+        reason_note=None,
+    )
+    db.add(correction)
+    db.delete(seg2)
+    db.commit()
+    db.refresh(seg1)
+
+    return {
+        "merged_segment": {
+            "id": str(seg1.id),
+            "segment_id": seg1.segment_id,
+            "start_ts": seg1.start_ts,
+            "end_ts": seg1.end_ts,
+            "text": seg1.text,
+            "speaker_label": seg1.speaker_label,
+            "confidence": seg1.confidence,
+            "repetition_flagged": seg1.repetition_flagged,
+        },
+        "removed_segment_id": str(seg2.id),
+    }
 
 
 @router.get("/api/stats/timing")
