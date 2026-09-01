@@ -32,6 +32,8 @@ class TrayContext : ApplicationContext
 
     // Inserted just before the first separator when an update is found.
     private ToolStripMenuItem? _updateItem;
+    private string? _downloadUrl;
+    private HttpListener? _updateServer;
 
     public TrayContext()
     {
@@ -67,6 +69,9 @@ class TrayContext : ApplicationContext
 
         // Version check in background — no delay needed, non-blocking.
         new Thread(CheckForUpdate) { IsBackground = true }.Start();
+
+        // Local HTTP server so the web UI can trigger updates.
+        new Thread(StartUpdateServer) { IsBackground = true }.Start();
     }
 
     // ── Icon ──────────────────────────────────────────────────────────────────
@@ -134,6 +139,7 @@ class TrayContext : ApplicationContext
             string? downloadUrl = urlMatch.Success ? urlMatch.Groups[1].Value : null;
 
             string label = $"Install update v{latest}";
+            _downloadUrl = downloadUrl;
 
             _tray.ShowBalloonTip(
                 8000, "InterScribe update available",
@@ -156,6 +162,70 @@ class TrayContext : ApplicationContext
         {
             // Silently ignore — no network, private repo not found, etc.
         }
+    }
+
+    // ── Update HTTP server (for web UI trigger) ───────────────────────────────
+
+    private void StartUpdateServer()
+    {
+        try
+        {
+            _updateServer = new HttpListener();
+            _updateServer.Prefixes.Add("http://localhost:8003/");
+            _updateServer.Start();
+
+            while (_updateServer.IsListening)
+            {
+                HttpListenerContext ctx;
+                try { ctx = _updateServer.GetContext(); }
+                catch { break; }
+                ThreadPool.QueueUserWorkItem(_ => HandleUpdateRequest(ctx));
+            }
+        }
+        catch
+        {
+            // Port in use or unavailable — tray menu still works.
+        }
+    }
+
+    private void HandleUpdateRequest(HttpListenerContext ctx)
+    {
+        ctx.Response.Headers.Add("Access-Control-Allow-Origin", "http://localhost:3002");
+        ctx.Response.Headers.Add("Access-Control-Allow-Methods", "POST, OPTIONS");
+        ctx.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+        ctx.Response.ContentType = "application/json";
+
+        if (ctx.Request.HttpMethod == "OPTIONS")
+        {
+            ctx.Response.StatusCode = 204;
+            ctx.Response.Close();
+            return;
+        }
+
+        if (ctx.Request.HttpMethod != "POST" || ctx.Request.Url?.AbsolutePath != "/trigger-update")
+        {
+            ctx.Response.StatusCode = 404;
+            ctx.Response.Close();
+            return;
+        }
+
+        if (_downloadUrl == null)
+        {
+            ctx.Response.StatusCode = 400;
+            WriteJson(ctx.Response, "{\"fallback\":true}");
+            return;
+        }
+
+        WriteJson(ctx.Response, "{\"ok\":true}");
+        new Thread(() => InstallUpdate(_downloadUrl, "Install update")) { IsBackground = true }.Start();
+    }
+
+    private static void WriteJson(HttpListenerResponse response, string json)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        response.ContentLength64 = bytes.Length;
+        response.OutputStream.Write(bytes, 0, bytes.Length);
+        response.Close();
     }
 
     private void TriggerInstall(string? downloadUrl, string menuLabel)
@@ -286,6 +356,8 @@ class TrayContext : ApplicationContext
             _timer.Dispose();
             _tray.Dispose();
             _menu.Dispose();
+            _updateServer?.Stop();
+            _updateServer?.Close();
         }
         base.Dispose(disposing);
     }

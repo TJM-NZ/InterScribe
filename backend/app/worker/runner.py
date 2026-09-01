@@ -97,14 +97,15 @@ def _run_pipeline(
             failed_video = err_db.get(Video, video.id)
             if failed_video:
                 failed_video.status = JobStatus.failed
-                failed_video.error_reason = f"{label} failed — check server logs"
+                failed_video.error_reason = str(exc)[:500]
+                err_db.commit()
             r = err_db.get(ProcessingRun, run_id)
             if r:
                 r.completed_at = completed_at
                 r.wall_seconds = (completed_at - started_at).total_seconds()
                 r.succeeded = False
-                r.error_reason = type(exc).__name__
-            err_db.commit()
+                r.error_reason = str(exc)[:500]
+                err_db.commit()
     finally:
         if unload_gpu:
             unload_qwen_model()

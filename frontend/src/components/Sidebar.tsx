@@ -63,21 +63,48 @@ function NavItem({
 }
 
 function UpdateBanner({ latestVersion }: { latestVersion: string }) {
+  const [updating, setUpdating] = useState(false);
+
+  async function handleClick() {
+    setUpdating(true);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch("http://localhost:8003/trigger-update", {
+        method: "POST",
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      const data = await res.json();
+      if (!res.ok || data.fallback) throw new Error("fallback");
+      // Tray app is handling the silent install — stay in updating state.
+    } catch {
+      // Tray not running or no asset — open releases page.
+      window.open(RELEASES_PAGE, "_blank", "noreferrer");
+      setUpdating(false);
+    }
+  }
+
   return (
-    <a
-      href={RELEASES_PAGE}
-      target="_blank"
-      rel="noreferrer"
-      className="block mx-3 mb-3 p-3 rounded-lg bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-colors group"
+    <button
+      onClick={handleClick}
+      disabled={updating}
+      className="block mx-3 mb-3 p-3 rounded-lg bg-blue-50 border border-blue-100 hover:bg-blue-100 transition-colors group w-[calc(100%-1.5rem)] text-left disabled:opacity-70 disabled:cursor-wait"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-blue-700">Update available</span>
-        <svg className="w-3.5 h-3.5 text-blue-500 group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+        <span className="text-xs font-semibold text-blue-700">
+          {updating ? "Installing…" : "Update available"}
+        </span>
+        {!updating && (
+          <svg className="w-3.5 h-3.5 text-blue-500 group-hover:translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        )}
       </div>
-      <p className="text-xs text-blue-600 mt-0.5">v{latestVersion} is ready</p>
-    </a>
+      <p className="text-xs text-blue-600 mt-0.5">
+        {updating ? "Starting installer…" : `v${latestVersion} is ready`}
+      </p>
+    </button>
   );
 }
 
