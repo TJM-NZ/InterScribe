@@ -138,7 +138,7 @@ Write-Host "──────────────────────�
 Write-Host "InterScribe is running."
 Write-Host ""
 Write-Host "  Frontend:  http://localhost:3002"
-Write-Host "  API docs:  http://localhost:8002/docs"
+Write-Host "  API docs:  http://localhost:3002/docs"
 Write-Host ""
 Write-Host "First transcription will download WhisperX models (~1-4 GB, cached after that)."
 Write-Host "────────────────────────────────"

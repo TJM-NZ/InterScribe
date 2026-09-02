@@ -2,7 +2,7 @@
 setlocal
 
 set "COMPOSE_DIR=%~dp0"
-set "HEALTH_URL=http://localhost:8002/health"
+set "HEALTH_URL=http://localhost:3002/health"
 set "FRONTEND_URL=http://localhost:3002"
 set "MAX_WAIT=120"
 

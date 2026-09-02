@@ -107,7 +107,7 @@ class TrayContext : ApplicationContext
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            var r = client.GetAsync("http://localhost:8002/health").Result;
+            var r = client.GetAsync("http://localhost:3002/health").Result;
             return r.IsSuccessStatusCode;
         }
         catch { return false; }

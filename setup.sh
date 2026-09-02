@@ -158,7 +158,7 @@ echo "────────────────────────�
 echo "InterScribe is running."
 echo ""
 echo "  Frontend:  http://localhost:3002"
-echo "  API docs:  http://localhost:8002/docs"
+echo "  API docs:  http://localhost:3002/docs"
 echo ""
 echo "First transcription will also download WhisperX models (~1-4 GB, cached)."
 echo "────────────────────────────────"
