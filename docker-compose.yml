@@ -79,7 +79,7 @@ services:
       - backend
 
   nginx:
-    image: nginx:alpine
+    image: nginx:stable-alpine
     ports:
       - "3002:80"
     volumes:
